@@ -5,6 +5,19 @@ from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="District Book Inventory", layout="wide")
 st.title("📚 District Book Inventory Tracker")
+# --- Top Metrics Cards ---
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric(label="🏫 Total Schools", value="16")
+
+with col2:
+    st.metric(label="📦 Pending Dispatches", value="12")
+
+with col3:
+    st.metric(label="✅ Completed Orders", value="148")
+
+st.divider()
 
 # ==========================================
 # 1. CONNECT TO GOOGLE SHEETS
