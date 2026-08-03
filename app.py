@@ -3,8 +3,10 @@ import pandas as pd
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 
+# 1. PAGE CONFIGURATION
 st.set_page_config(page_title="District Book Inventory", layout="wide")
-# --- CUSTOM CSS: Dark Sidebar + Clean Light Inputs ---
+
+# --- CUSTOM CSS: Dark Sidebar + Fixed Dropdown & Inputs ---
 st.markdown("""
     <style>
     /* 1. Dark Slate Sidebar styling */
@@ -15,28 +17,43 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* 2. Fix input fields on main page (Text Area, Date Input, Select Boxes) */
-    div[data-baseweb="input"] > div, 
-    textarea,
+    /* 2. Fix Select Box Container Background & Borders */
     div[data-baseweb="select"] > div {
+        background-color: #1E293B !important;
+        border: 1px solid #475569 !important;
+    }
+
+    /* 3. Force Select Box Selected Text & Arrow Icon to White */
+    div[data-baseweb="select"] span,
+    div[data-baseweb="select"] div,
+    div[data-baseweb="select"] svg {
+        color: #FFFFFF !important;
+        fill: #FFFFFF !important;
+    }
+
+    /* 4. Fix Main Page Input Fields (Text Area, Text Input, Date Input) */
+    textarea, 
+    div[data-baseweb="input"] > div {
         background-color: #FFFFFF !important;
         color: #0F172A !important;
         border: 1px solid #CBD5E1 !important;
     }
 
-    /* 3. Ensure input text typed by the user stays dark slate */
+    /* 5. Ensure typed text inside inputs stays dark slate */
     input, textarea {
         color: #0F172A !important;
     }
 
-    /* 4. Main page label text styling */
+    /* 6. Main page label text styling */
     .stTextInput label, .stDateInput label, .stTextArea label, .stSelectbox label {
         color: #0F172A !important;
         font-weight: 600;
     }
     </style>
 """, unsafe_allow_html=True)
+
 st.title("📚 District Book Inventory Tracker")
+
 # --- Top Metrics Cards ---
 col1, col2, col3 = st.columns(3)
 
@@ -238,6 +255,9 @@ else:
     st.header("Principal Portal")
     selected_school = st.selectbox("Select Your School:", SCHOOL_LIST)
 
+    # 📌 Notice Banner for Principals
+    st.info(f"ℹ️ **Notice for {selected_school}:** The books listed below are assigned to your school and need to be picked up at the District Office.")
+
     school_df = load_data("school_inventory")
 
     if not school_df.empty:
@@ -254,7 +274,7 @@ else:
             summary = summary.sort_values(by="book_title", ascending=False)
             st.dataframe(summary, use_container_width=True)
         else:
-            st.info("No pending dispatches logged for this school.")
+            st.success("🎉 No pending dispatches for this school. All books have been received!")
     else:
         st.info("No dispatches logged for this school yet.")
 
@@ -273,5 +293,13 @@ else:
                 "date": str(appt_date),
                 "message": message.strip()
             }])
-            # Append and save logic here as configured in your app
-            st.success("Appointment request submitted!")
+            
+            # Save appointment to Google Sheet
+            if not appt_df.empty:
+                appt_df = pd.concat([appt_df, new_appt], ignore_index=True)
+            else:
+                appt_df = new_appt
+                
+            conn.update(worksheet="appointments", data=appt_df)
+            st.success("Appointment request submitted successfully!")
+            st.rerun()
