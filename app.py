@@ -195,14 +195,21 @@ else:
 
     school_df = load_data("school_inventory")
 
-    if not school_df.empty:
-      if not filtered.empty:
-        filtered = filtered[filtered["status"].astype(str).str.strip().str.lower() != "received"]
+   if not school_df.empty:
+        # 1. First define 'filtered' by matching school_name
+        filtered = school_df[school_df["school_name"].str.strip() == selected_school.strip()]
+        
+        # 2. Filter out books where status is 'Received'
+        if not filtered.empty:
+            filtered = filtered[filtered["status"].astype(str).str.strip().str.lower() != "received"]
+        
+        # 3. Display summary or info message
         if not filtered.empty:
             summary = filtered.groupby(["book_title", "status"])["quantity_received"].sum().reset_index()
             summary = summary.sort_values(by="book_title", ascending=False)
             st.dataframe(summary, use_container_width=True)
         else:
+            st.info("No pending dispatches logged for this school.")
             st.info("No dispatches logged for this school yet.")
 
     st.divider()
