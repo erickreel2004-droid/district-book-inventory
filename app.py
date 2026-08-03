@@ -196,7 +196,8 @@ else:
     school_df = load_data("school_inventory")
 
     if not school_df.empty:
-        filtered = school_df[school_df["school_name"].str.strip() == selected_school.strip()]
+      if not filtered.empty:
+        filtered = filtered[filtered["status"].astype(str).str.strip().str.lower() != "received"]
         if not filtered.empty:
             summary = filtered.groupby(["book_title", "status"])["quantity_received"].sum().reset_index()
             summary = summary.sort_values(by="book_title", ascending=False)
