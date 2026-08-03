@@ -4,6 +4,38 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 
 st.set_page_config(page_title="District Book Inventory", layout="wide")
+# --- CUSTOM CSS: Dark Sidebar + Clean Light Inputs ---
+st.markdown("""
+    <style>
+    /* 1. Dark Slate Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #1E293B !important;
+    }
+    [data-testid="stSidebar"] * {
+        color: #FFFFFF !important;
+    }
+
+    /* 2. Fix input fields on main page (Text Area, Date Input, Select Boxes) */
+    div[data-baseweb="input"] > div, 
+    textarea,
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        border: 1px solid #CBD5E1 !important;
+    }
+
+    /* 3. Ensure input text typed by the user stays dark slate */
+    input, textarea {
+        color: #0F172A !important;
+    }
+
+    /* 4. Main page label text styling */
+    .stTextInput label, .stDateInput label, .stTextArea label, .stSelectbox label {
+        color: #0F172A !important;
+        font-weight: 600;
+    }
+    </style>
+""", unsafe_allow_html=True)
 st.title("📚 District Book Inventory Tracker")
 # --- Top Metrics Cards ---
 col1, col2, col3 = st.columns(3)
