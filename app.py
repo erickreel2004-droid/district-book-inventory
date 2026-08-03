@@ -1,164 +1,225 @@
-import sqlite3
+from datetime import datetime
 import pandas as pd
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
-# --- DATABASE SETUP ---
-conn = sqlite3.connect("inventory.db", check_same_thread=False)
-c = conn.cursor()
-
-# Create tables for Master Inventory and School Allocations if they don't exist
-c.execute(
-    """CREATE TABLE IF NOT EXISTS master_inventory 
-             (book_title TEXT PRIMARY KEY, central_stock INTEGER)"""
-)
-c.execute(
-    """CREATE TABLE IF NOT EXISTS school_inventory 
-             (school_name TEXT, book_title TEXT, quantity_received INTEGER, status TEXT, 
-              PRIMARY KEY (school_name, book_title))"""
-)
-conn.commit()
-
-# --- APP LAYOUT ---
 st.set_page_config(page_title="District Book Inventory", layout="wide")
 st.title("📚 District Book Inventory Tracker")
 
-# Sidebar navigation to switch between Custodian and Principal views
-role = st.sidebar.radio("Select View:", ["Custodian View", "Principal View"])
+# ==========================================
+# 1. CONNECT TO GOOGLE SHEETS
+# ==========================================
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# Helper function to read a tab
+def load_data(worksheet_name):
+    return conn.read(worksheet=worksheet_name, ttl=0)
 
 # ==========================================
-# CUSTODIAN VIEW
+# 2. PRESET SCHOOL LIST
+# ==========================================
+SCHOOL_LIST = [
+    "Arcaflor Maniapao ES",
+    "Balabag ES",
+    "Casildo B. Nonol Sr. ES",
+    "Colorado ES",
+    "Damñas ES",
+    "Digos City Central ES",
+    "Domingo Abawag ES",
+    "Dulangan ES",
+    "Federico Alferez ES",
+    "Jolencio R. Alberca ES",
+    "Lungag ES",
+    "Mahayahay ES",
+    "Pedro Basalan ES",
+    "Ranao ES",
+    "Remedios N. Saplala ES",
+    "Ruparan ES",
+]
+
+# Sidebar navigation
+role = st.sidebar.radio("Select View:", ["Principal View", "Custodian View"])
+
+# ==========================================
+# 3. CUSTODIAN VIEW
 # ==========================================
 if role == "Custodian View":
-    st.header("Custodian Control Panel")
+    st.header("🔒 Custodian Control Panel")
 
-    col1, col2 = st.columns(2)
+    password = st.text_input("Enter Custodian Password to Access:", type="password")
+    CUSTODIAN_PASSWORD = "admin123"
 
-    # 1. Add new books to central storage
-    with col1:
-        st.subheader("Add / Update Central Stock")
-        with st.form("add_book_form"):
-            title = st.text_input("Book Title")
-            stock = st.number_input(
-                "Quantity to Add", min_value=1, step=1, value=100
-            )
-            submit = st.form_submit_button("Add to Master Stock")
+    if password == CUSTODIAN_PASSWORD:
+        st.success("Access Granted!")
 
-            if submit and title:
-                # Add or update central stock in SQLite
-                c.execute(
-                    "INSERT INTO master_inventory (book_title, central_stock) VALUES (?, ?) "
-                    "ON CONFLICT(book_title) DO UPDATE SET central_stock = central_stock + ?",
-                    (title.strip(), stock, stock),
-                )
-                conn.commit()
-                st.success(f"Added {stock} copies of '{title}'!")
+        col1, col2 = st.columns([1, 2])
 
-    # 2. Transfer books to a school
-    with col2:
-        st.subheader("Dispatch Books to a School")
-        master_df = pd.read_sql_query("SELECT * FROM master_inventory", conn)
+        # --- A. ADD NEW BOOKS TO CENTRAL STORAGE ---
+        with col1:
+            st.subheader("Add / Update Central Stock")
+            with st.form("add_book_form"):
+                title = st.text_input("Book Title")
+                stock = st.number_input("Quantity to Add", min_value=1, step=1, value=100)
+                submit = st.form_submit_button("Add to Master Stock")
 
-        if not master_df.empty:
-            with st.form("dispatch_form"):
-                selected_book = st.selectbox(
-                    "Select Book", master_df["book_title"].tolist()
-                )
-                school_name = st.text_input(
-                    "School / Principal Name", placeholder="e.g. Lincoln High"
-                )
-                dispatch_qty = st.number_input(
-                    "Quantity to Send", min_value=1, step=1, value=10
-                )
-                dispatch_submit = st.form_submit_button(
-                    "Dispatch to Principal"
-                )
+                if submit and title:
+                    master_df = load_data("master_inventory")
+                    title_clean = title.strip()
 
-                if dispatch_submit and school_name:
-                    # Check current available stock
-                    current_stock = master_df.loc[
-                        master_df["book_title"] == selected_book,
-                        "central_stock",
-                    ].values[0]
-
-                    if dispatch_qty > current_stock:
-                        st.error("Not enough central stock available!")
+                    if not master_df.empty and title_clean in master_df["book_title"].values:
+                        master_df.loc[master_df["book_title"] == title_clean, "central_stock"] += stock
                     else:
-                        # Subtract stock from Central and assign to School as 'Pending'
-                        c.execute(
-                            "UPDATE master_inventory SET central_stock = central_stock - ? WHERE book_title = ?",
-                            (dispatch_qty, selected_book),
-                        )
-                        c.execute(
-                            "INSERT INTO school_inventory (school_name, book_title, quantity_received, status) VALUES (?, ?, ?, 'Pending') "
-                            "ON CONFLICT(school_name, book_title) DO UPDATE SET quantity_received = quantity_received + ?, status = 'Pending'",
-                            (
-                                school_name.strip(),
-                                selected_book,
-                                dispatch_qty,
-                                dispatch_qty,
-                            ),
-                        )
-                        conn.commit()
-                        st.success(
-                            f"Dispatched {dispatch_qty} of '{selected_book}' to {school_name}!"
-                        )
+                        new_row = pd.DataFrame([{"book_title": title_clean, "central_stock": stock}])
+                        master_df = pd.concat([master_df, new_row], ignore_index=True)
+
+                    conn.update(worksheet="master_inventory", data=master_df)
+                    st.success(f"Added {stock} copies of '{title_clean}'!")
+                    st.rerun()
+
+        # --- B. DISPATCH BOOKS GRID ---
+        with col2:
+            st.subheader("Dispatch Books to Schools")
+            master_df = load_data("master_inventory")
+
+            if master_df.empty:
+                st.info("Please add books to Central Stock first before dispatching.")
+            else:
+                master_df = master_df.sort_values(by="book_title", ascending=False)
+                book_options = master_df["book_title"].tolist()
+
+                m_col1, m_col2 = st.columns([3, 1])
+                selected_book = m_col1.selectbox("📖 Select Book Title to Dispatch:", book_options)
+                dispatch_all_btn = m_col2.button("⚡ Batch Dispatch All", type="primary", use_container_width=True)
+
+                current_stock = int(master_df.loc[master_df["book_title"] == selected_book, "central_stock"].values[0])
+
+                st.divider()
+
+                live_total_requested = 0
+                dispatch_selections = []
+
+                for idx, school in enumerate(SCHOOL_LIST):
+                    c1, c2, c3 = st.columns([4, 2, 2])
+                    c1.write(f"**{school}**")
+
+                    input_key = f"dispatch_qty_{selected_book}_{idx}"
+                    if input_key not in st.session_state:
+                        st.session_state[input_key] = 10
+
+                    qty = c2.number_input(
+                        f"Qty for {school}",
+                        min_value=1,
+                        step=1,
+                        key=input_key,
+                        label_visibility="collapsed",
+                    )
+                    live_total_requested += qty
+                    dispatch_selections.append({"school": school, "qty": qty})
+
+                    if c3.button("Dispatch", key=f"dispatch_btn_{selected_book}_{idx}"):
+                        if qty > current_stock:
+                            st.error(f"Not enough stock! Only {current_stock} available.")
+                        else:
+                            # Update master inventory stock
+                            master_df.loc[master_df["book_title"] == selected_book, "central_stock"] -= qty
+                            conn.update(worksheet="master_inventory", data=master_df)
+
+                            # Append to school inventory
+                            school_df = load_data("school_inventory")
+                            new_dispatch = pd.DataFrame([{
+                                "school_name": school,
+                                "book_title": selected_book,
+                                "quantity_received": qty,
+                                "status": "Pending"
+                            }])
+                            school_df = pd.concat([school_df, new_dispatch], ignore_index=True)
+                            conn.update(worksheet="school_inventory", data=school_df)
+
+                            st.success(f"Dispatched {qty} copies of '{selected_book}' to {school}!")
+                            st.rerun()
+
+                st.divider()
+                m1, m2, m3 = st.columns(3)
+                m1.metric("📦 Warehouse Stock Available", current_stock)
+                m2.metric("📋 Total Input (All Schools)", live_total_requested)
+                m3.metric("🟢 Remaining Stock After Batch", current_stock - live_total_requested)
+
+                if dispatch_all_btn:
+                    if live_total_requested > current_stock:
+                        st.error(f"Cannot batch dispatch! Required `{live_total_requested}` copies, but only `{current_stock}` available.")
+                    else:
+                        master_df.loc[master_df["book_title"] == selected_book, "central_stock"] -= live_total_requested
+                        conn.update(worksheet="master_inventory", data=master_df)
+
+                        school_df = load_data("school_inventory")
+                        new_rows = pd.DataFrame([
+                            {
+                                "school_name": item["school"],
+                                "book_title": selected_book,
+                                "quantity_received": item["qty"],
+                                "status": "Pending"
+                            } for item in dispatch_selections
+                        ])
+                        school_df = pd.concat([school_df, new_rows], ignore_index=True)
+                        conn.update(worksheet="school_inventory", data=school_df)
+
+                        st.success(f"Successfully batch dispatched **{selected_book}** to all schools!")
                         st.rerun()
 
-    st.divider()
+        st.divider()
 
-    # Display Tables
-    st.subheader("📊 Central Warehouse Stock")
-    st.dataframe(
-        pd.read_sql_query("SELECT * FROM master_inventory", conn),
-        use_container_width=True,
-    )
+        # --- C. DATA & MANAGEMENT TABS ---
+        tab1, tab2, tab3 = st.tabs(["📊 Central Warehouse Stock", "🚚 Dispatched Inventory Log", "📅 Scheduled Appointments"])
 
-    st.subheader("🚚 Dispatched Inventory Log")
-    st.dataframe(
-        pd.read_sql_query("SELECT * FROM school_inventory", conn),
-        use_container_width=True,
-    )
+        with tab1:
+            central_df = load_data("master_inventory")
+            if not central_df.empty:
+                st.dataframe(central_df.sort_values(by="book_title", ascending=False), use_container_width=True)
+
+        with tab2:
+            dispatched_df = load_data("school_inventory")
+            if not dispatched_df.empty:
+                st.dataframe(dispatched_df.sort_values(by="book_title", ascending=False), use_container_width=True)
+
+        with tab3:
+            appointments_df = load_data("appointments")
+            if not appointments_df.empty:
+                st.dataframe(appointments_df, use_container_width=True)
 
 # ==========================================
-# PRINCIPAL VIEW
+# 4. PRINCIPAL VIEW
 # ==========================================
 else:
     st.header("Principal Portal")
+    selected_school = st.selectbox("Select Your School:", SCHOOL_LIST)
 
-    # Filter by specific school
-    all_schools = pd.read_sql_query(
-        "SELECT DISTINCT school_name FROM school_inventory", conn
-    )["school_name"].tolist()
+    school_df = load_data("school_inventory")
 
-    if not all_schools:
-        st.info("No dispatches logged yet.")
-    else:
-        selected_school = st.selectbox("Select Your School:", all_schools)
+    if not school_df.empty:
+        filtered = school_df[school_df["school_name"].str.strip() == selected_school.strip()]
+        if not filtered.empty:
+            summary = filtered.groupby(["book_title", "status"])["quantity_received"].sum().reset_index()
+            summary = summary.sort_values(by="book_title", ascending=False)
+            st.dataframe(summary, use_container_width=True)
+        else:
+            st.info("No dispatches logged for this school yet.")
 
-        school_df = pd.read_sql_query(
-            "SELECT book_title, quantity_received, status FROM school_inventory WHERE school_name = ?",
-            conn,
-            params=(selected_school,),
-        )
+    st.divider()
+    st.subheader("📅 Schedule an Appointment / Message Custodian")
 
-        st.subheader(f"Incoming / Assigned Books for {selected_school}")
-        st.dataframe(school_df, use_container_width=True)
+    with st.form("appointment_form"):
+        appt_date = st.date_input("Preferred Appointment Date")
+        message = st.text_area("Message / Notes for Custodian")
+        submit_appt = st.form_submit_button("Send Request to Custodian")
 
-        # Allow principal to confirm receipt
-        pending_books = school_df[school_df["status"] == "Pending"][
-            "book_title"
-        ].tolist()
-
-        if pending_books:
-            st.subheader("Acknowledge Delivery")
-            book_to_confirm = st.selectbox(
-                "Select book received:", pending_books
-            )
-            if st.button("Confirm Receipt"):
-                c.execute(
-                    "UPDATE school_inventory SET status = 'Received' WHERE school_name = ? AND book_title = ?",
-                    (selected_school, book_to_confirm),
-                )
-                conn.commit()
-                st.success(f"Status for '{book_to_confirm}' updated to Received!")
-                st.rerun()
+        if submit_appt and message.strip():
+            appt_df = load_data("appointments")
+            new_appt = pd.DataFrame([{
+                "school_name": selected_school,
+                "date": str(appt_date),
+                "message": message.strip(),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }])
+            appt_df = pd.concat([appt_df, new_appt], ignore_index=True)
+            conn.update(worksheet="appointments", data=appt_df)
+            st.success("Your request has been sent to the Custodian!")
