@@ -2,5 +2,5 @@
 primaryColor = "#2563EB"
 backgroundColor = "#F8FAFC"
 secondaryBackgroundColor = "#1E293B"
-textColor = "#FFFFFF"               # Sets main text to white for high contrast
+textColor = "#0F172A"
 font = "sans serif"
