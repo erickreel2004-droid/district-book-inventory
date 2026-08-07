@@ -256,7 +256,7 @@ else:
     selected_school = st.selectbox("Select Your School:", SCHOOL_LIST)
 
     # 📌 Notice Banner for Principals
-    st.info(f"ℹ️ **Notice for {selected_school}:** The books listed below are assigned to your school and need to be picked up at the District Office.")
+    st.info(f"ℹ️ **Notice for {selected_school}:** Please be informed that the following books/learning materials assigned to your school are now ready for pickup at the District Office")
 
     school_df = load_data("school_inventory")
 
