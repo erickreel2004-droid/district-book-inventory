@@ -397,6 +397,7 @@ else:
     st.info(f"ℹ️ **Notice for {selected_school}:** Please be informed that the following books/learning materials assigned to your school are now ready for pickup at the District Office.")
 
     school_df = load_data("school_inventory")
+    master_df = load_data("master_inventory")
 
     if not school_df.empty:
         filtered = school_df[school_df["school_name"].astype(str).str.strip() == selected_school.strip()]
@@ -407,8 +408,28 @@ else:
         
         if not filtered.empty:
             summary = filtered.groupby(["book_title", "status"])["quantity_received"].sum().reset_index()
+            
+            # --- 🔗 MERGE BOOK PRICES & USEFUL LIFE FROM MASTER INVENTORY ---
+            if not master_df.empty and "unit_cost" in master_df.columns:
+                # Merge unit_cost and useful_life from master inventory based on book_title
+                cols_to_merge = ["book_title", "unit_cost"]
+                if "useful_life" in master_df.columns:
+                    cols_to_merge.append("useful_life")
+                
+                summary = summary.merge(master_df[cols_to_merge], on="book_title", how="left")
+            else:
+                # Fallback defaults if unit_cost column doesn't exist yet in Google Sheets
+                summary["unit_cost"] = 90.00
+                summary["useful_life"] = 3
+
+            # Fill any missing values if a book title wasn't found in master
+            summary["unit_cost"] = summary["unit_cost"].fillna(90.00)
+            summary["useful_life"] = summary["useful_life"].fillna(3)
+
             summary = summary.sort_values(by="book_title", ascending=False)
-            st.dataframe(summary, use_container_width=True)
+            
+            # Display readable summary on web interface
+            st.dataframe(summary[["book_title", "status", "quantity_received", "unit_cost"]], use_container_width=True)
 
             # --- 📊 GENERATE & DOWNLOAD OFFICIAL DEPED ICS EXCEL ---
             excel_data = generate_official_deped_ics_excel(
@@ -428,28 +449,3 @@ else:
             st.success("🎉 No pending dispatches for this school. All books have been received!")
     else:
         st.info("No dispatches logged for this school yet.")
-
-    st.divider()
-    st.subheader("🗓️ Schedule an Appointment / Message Custodian")
-
-    with st.form("appointment_form"):
-        appt_date = st.date_input("Preferred Appointment Date")
-        message = st.text_area("Message / Notes for Custodian")
-        submit_appt = st.form_submit_button("Send Request to Custodian")
-
-        if submit_appt and message.strip():
-            appt_df = load_data("appointments")
-            new_appt = pd.DataFrame([{
-                "school_name": selected_school,
-                "date": str(appt_date),
-                "message": message.strip()
-            }])
-            
-            if not appt_df.empty:
-                appt_df = pd.concat([appt_df, new_appt], ignore_index=True)
-            else:
-                appt_df = new_appt
-
-            conn.update(worksheet="appointments", data=appt_df)
-            st.success("Appointment request submitted successfully!")
-            st.rerun()
