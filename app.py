@@ -446,7 +446,8 @@ if role == "Custodian View":
 # ==========================================
 else:
     st.header("Principal Portal")
-    selected_school = st.selectbox("Select Your School:", SCHOOL_LIST)
+  if role == "Principal View":
+    selected_school = st.sidebar.selectbox("🏫 Select Your School:", SCHOOL_LIST)
 
     # Notice Box
     st.info(f"ℹ️ **Notice for {selected_school}:** Please be informed that the following books/learning materials assigned to your school are now ready for pickup at the District Office.")
