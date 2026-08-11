@@ -58,13 +58,68 @@ st.markdown("""
 st.title("📚 District Book Inventory Tracker")
 
 # --- Top Metrics Cards ---
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric(label="🏫 Total Schools", value="16")
-with col2:
-    st.metric(label="📦 Pending Dispatches", value="12")
-with col3:
-    st.metric(label="✅ Completed Orders", value="148")
+if role == "Custodian View":
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(label="🏫 Total Schools", value="16")
+    with col2:
+        st.metric(label="📦 Total Pending Dispatches", value="12")
+    with col3:
+        st.metric(label="✅ Completed Orders", value="148")
+
+else:
+    # Principal View: Calculated per selected school
+    school_df = load_data("school_inventory")
+    master_df = load_data("master_inventory")
+
+    # Filter records for selected school
+    school_records = school_df[school_df["school_name"].astype(str).str.strip() == selected_school.strip()] if not school_df.empty else pd.DataFrame()
+
+    if not school_records.empty and not master_df.empty:
+        # Merge prices from master inventory
+        cols = ["book_title", "unit_cost"]
+        merged_records = school_records.merge(master_df[cols], on="book_title", how="left")
+        merged_records["unit_cost"] = merged_records["unit_cost"].fillna(90.00) # Default fallback
+    else:
+        merged_records = school_records
+        if not merged_records.empty:
+            merged_records["unit_cost"] = 90.00
+
+    if not merged_records.empty:
+        # 1. Pending Dispatches/ICS Batches
+        pending_items = merged_records[merged_records["status"].astype(str).str.lower() == "for release"]
+        pending_count = len(pending_items)
+        
+        # 2. Total Accountable Value for pickup (Qty * Price)
+        pending_value = (pending_items["quantity_received"] * pending_items["unit_cost"]).sum()
+        
+        # 3. Total Received Value (Completed Items)
+        received_items = merged_records[merged_records["status"].astype(str).str.lower() == "received"]
+        received_value = (received_items["quantity_received"] * received_items["unit_cost"]).sum()
+    else:
+        pending_count = 0
+        pending_value = 0.0
+        received_value = 0.0
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(
+            label="📋 Pending ICS Dispatches", 
+            value=f"{pending_count} Batches",
+            help="Number of book titles ready for pickup at the District Office"
+        )
+    with col2:
+        st.metric(
+            label="💵 Total Accountable Value", 
+            value=f"₱{pending_value:,.2f}",
+            help="Total monetary value of ready materials requiring signature on the ICS form"
+        )
+    with col3:
+        st.metric(
+            label="🏛️ Accountable Value Received", 
+            value=f"₱{received_value:,.2f}",
+            help="Total value of books previously collected and acknowledged"
+        )
 
 st.divider()
 
