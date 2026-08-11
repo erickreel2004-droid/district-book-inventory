@@ -55,20 +55,58 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ==========================================
+# 2. CONNECT TO GOOGLE SHEETS & PRESETS
+# ==========================================
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+def load_data(worksheet_name):
+    return conn.read(worksheet=worksheet_name, ttl=0)
+
+SCHOOL_LIST = [
+    "Arcaflor Maniapao ES",
+    "Balabag ES",
+    "Casildo B. Nonol Sr. ES",
+    "Colorado ES",
+    "Damñas ES",
+    "Digos City Central ES",
+    "Domingo Abawag ES",
+    "Dulangan ES",
+    "Federico Alferez ES",
+    "Jolencio R. Alberca ES",
+    "Lungag ES",
+    "Mahayahay ES",
+    "Pedro Basalan ES",
+    "Ranao ES",
+    "Remedios N. Saplala ES",
+    "Ruparan ES",
+]
+
+# --- SIDEBAR CONTROLS ---
+st.sidebar.title("Navigation")
+role = st.sidebar.radio("Select View:", ["Principal View", "Custodian View"])
+
+if role == "Principal View":
+    selected_school = st.sidebar.selectbox("🏫 Select Your School:", SCHOOL_LIST)
+else:
+    selected_school = None
+
+# ==========================================
+# 3. HEADER & DYNAMIC METRICS BANNER
+# ==========================================
 st.title("📚 District Book Inventory Tracker")
 
-# --- Top Metrics Cards ---
 if role == "Custodian View":
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric(label="🏫 Total Schools", value="16")
+        st.metric(label="🏫 Total Schools", value=len(SCHOOL_LIST))
     with col2:
         st.metric(label="📦 Total Pending Dispatches", value="12")
     with col3:
         st.metric(label="✅ Completed Orders", value="148")
 
 else:
-    # Principal View: Calculated per selected school
+    # --- PRINCIPAL VIEW: Dynamic Accountability Metrics ---
     school_df = load_data("school_inventory")
     master_df = load_data("master_inventory")
 
@@ -77,9 +115,13 @@ else:
 
     if not school_records.empty and not master_df.empty:
         # Merge prices from master inventory
-        cols = ["book_title", "unit_cost"]
-        merged_records = school_records.merge(master_df[cols], on="book_title", how="left")
-        merged_records["unit_cost"] = merged_records["unit_cost"].fillna(90.00) # Default fallback
+        cols_to_merge = ["book_title", "unit_cost"] if "unit_cost" in master_df.columns else ["book_title"]
+        merged_records = school_records.merge(master_df[cols_to_merge], on="book_title", how="left")
+        
+        if "unit_cost" not in merged_records.columns:
+            merged_records["unit_cost"] = 90.00
+        else:
+            merged_records["unit_cost"] = merged_records["unit_cost"].fillna(90.00)
     else:
         merged_records = school_records
         if not merged_records.empty:
@@ -124,36 +166,7 @@ else:
 st.divider()
 
 # ==========================================
-# 2. CONNECT TO GOOGLE SHEETS & PRESETS
-# ==========================================
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-def load_data(worksheet_name):
-    return conn.read(worksheet=worksheet_name, ttl=0)
-
-SCHOOL_LIST = [
-    "Arcaflor Maniapao ES",
-    "Balabag ES",
-    "Casildo B. Nonol Sr. ES",
-    "Colorado ES",
-    "Damñas ES",
-    "Digos City Central ES",
-    "Domingo Abawag ES",
-    "Dulangan ES",
-    "Federico Alferez ES",
-    "Jolencio R. Alberca ES",
-    "Lungag ES",
-    "Mahayahay ES",
-    "Pedro Basalan ES",
-    "Ranao ES",
-    "Remedios N. Saplala ES",
-    "Ruparan ES",
-]
-
-role = st.sidebar.radio("Select View:", ["Principal View", "Custodian View"])
-
-# ==========================================
-# 3. FORMAL DEPED ICS EXCEL GENERATOR
+# 4. FORMAL DEPED ICS EXCEL GENERATOR
 # ==========================================
 def generate_official_deped_ics_excel(school_name, date_str, df_items):
     wb = openpyxl.Workbook()
@@ -298,7 +311,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     return buffer
 
 # ==========================================
-# 4. CUSTODIAN VIEW
+# 5. CUSTODIAN VIEW
 # ==========================================
 if role == "Custodian View":
     st.header("🔒 Custodian Control Panel")
@@ -442,12 +455,10 @@ if role == "Custodian View":
                 st.dataframe(appointments_df, use_container_width=True)
 
 # ==========================================
-# 5. PRINCIPAL VIEW
+# 6. PRINCIPAL VIEW
 # ==========================================
 else:
-    st.header("Principal Portal")
-  if role == "Principal View":
-    selected_school = st.sidebar.selectbox("🏫 Select Your School:", SCHOOL_LIST)
+    st.header(f"Principal Portal - {selected_school}")
 
     # Notice Box
     st.info(f"ℹ️ **Notice for {selected_school}:** Please be informed that the following books/learning materials assigned to your school are now ready for pickup at the District Office.")
@@ -465,20 +476,18 @@ else:
         if not filtered.empty:
             summary = filtered.groupby(["book_title", "status"])["quantity_received"].sum().reset_index()
             
-            # --- 🔗 MERGE BOOK PRICES & USEFUL LIFE FROM MASTER INVENTORY ---
+            # --- MERGE BOOK PRICES & USEFUL LIFE FROM MASTER INVENTORY ---
             if not master_df.empty and "unit_cost" in master_df.columns:
-                # Merge unit_cost and useful_life from master inventory based on book_title
                 cols_to_merge = ["book_title", "unit_cost"]
                 if "useful_life" in master_df.columns:
                     cols_to_merge.append("useful_life")
                 
                 summary = summary.merge(master_df[cols_to_merge], on="book_title", how="left")
             else:
-                # Fallback defaults if unit_cost column doesn't exist yet in Google Sheets
                 summary["unit_cost"] = 90.00
                 summary["useful_life"] = 3
 
-            # Fill any missing values if a book title wasn't found in master
+            # Fill missing values
             summary["unit_cost"] = summary["unit_cost"].fillna(90.00)
             summary["useful_life"] = summary["useful_life"].fillna(3)
 
@@ -487,7 +496,7 @@ else:
             # Display readable summary on web interface
             st.dataframe(summary[["book_title", "status", "quantity_received", "unit_cost"]], use_container_width=True)
 
-            # --- 📊 GENERATE & DOWNLOAD OFFICIAL DEPED ICS EXCEL ---
+            # --- GENERATE & DOWNLOAD OFFICIAL DEPED ICS EXCEL ---
             excel_data = generate_official_deped_ics_excel(
                 school_name=selected_school,
                 date_str=datetime.now().strftime("%B %d, %Y"),
