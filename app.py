@@ -23,22 +23,8 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Fix Select Box Container Background & Borders */
-    div[data-baseweb="select"] > div {
-        background-color: #1E293B !important;
-        border: 1px solid #475569 !important;
-    }
-
-    /* Force Select Box Selected Text & Arrow Icon to White */
-    div[data-baseweb="select"] span,
-    div[data-baseweb="select"] div,
-    div[data-baseweb="select"] svg {
-        color: #FFFFFF !important;
-        fill: #FFFFFF !important;
-    }
-
-    /* Fix Main Page Input Fields */
-    textarea, div[data-baseweb="input"] > div {
+    /* Fix Main Page Input Fields & Selectboxes */
+    textarea, div[data-baseweb="input"] > div, div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important;
         color: #0F172A !important;
         border: 1px solid #CBD5E1 !important;
@@ -86,17 +72,14 @@ SCHOOL_LIST = [
 st.sidebar.title("Navigation")
 role = st.sidebar.radio("Select View:", ["Principal View", "Custodian View"])
 
-if role == "Principal View":
-    selected_school = st.sidebar.selectbox("🏫 Select Your School:", SCHOOL_LIST)
-else:
-    selected_school = None
-
 # ==========================================
-# 3. HEADER & DYNAMIC METRICS BANNER
+# 3. HEADER, PROMINENT SCHOOL SELECTOR & METRICS
 # ==========================================
 st.title("📚 District Book Inventory Tracker")
 
 if role == "Custodian View":
+    selected_school = None
+    
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric(label="🏫 Total Schools", value=len(SCHOOL_LIST))
@@ -106,7 +89,14 @@ if role == "Custodian View":
         st.metric(label="✅ Completed Orders", value="148")
 
 else:
-    # --- PRINCIPAL VIEW: Dynamic Accountability Metrics ---
+    # --- PROMINENT SCHOOL SELECTOR ON MAIN PAGE ---
+    selected_school = st.selectbox(
+        "🏫 **Select Your School to View Inventory & ICS:**", 
+        SCHOOL_LIST,
+        index=0
+    )
+
+    # --- PRINCIPAL VIEW: Property Accountability Metrics ---
     school_df = load_data("school_inventory")
     master_df = load_data("master_inventory")
 
