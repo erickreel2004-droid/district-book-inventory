@@ -5,7 +5,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 
 import openpyxl
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
 
 # ==========================================
@@ -23,8 +23,19 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* Fix Main Page Input Fields & Selectboxes */
-    textarea, div[data-baseweb="input"] > div, div[data-baseweb="select"] > div {
+    /* Main Page Select Box & Inputs Styling */
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        border: 1px solid #CBD5E1 !important;
+    }
+    
+    /* Force main page selectbox text to be clear dark slate */
+    div[data-baseweb="select"] span,
+    div[data-baseweb="select"] div {
+        color: #0F172A !important;
+    }
+
+    textarea, div[data-baseweb="input"] > div {
         background-color: #FFFFFF !important;
         color: #0F172A !important;
         border: 1px solid #CBD5E1 !important;
@@ -46,8 +57,13 @@ st.markdown("""
 # ==========================================
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# Set ttl=10 (10 seconds) to prevent hitting Google API Rate Limits (60 req/min)
 def load_data(worksheet_name):
-    return conn.read(worksheet=worksheet_name, ttl=0)
+    try:
+        return conn.read(worksheet=worksheet_name, ttl=10)
+    except Exception as e:
+        st.warning(f"⚠️ Unable to fetch worksheet '{worksheet_name}'. Please verify the tab name matches your Google Sheet and permissions are set properly.")
+        return pd.DataFrame()
 
 SCHOOL_LIST = [
     "Arcaflor Maniapao ES",
@@ -101,7 +117,10 @@ else:
     master_df = load_data("master_inventory")
 
     # Filter records for selected school
-    school_records = school_df[school_df["school_name"].astype(str).str.strip() == selected_school.strip()] if not school_df.empty else pd.DataFrame()
+    if not school_df.empty and "school_name" in school_df.columns:
+        school_records = school_df[school_df["school_name"].astype(str).str.strip() == selected_school.strip()]
+    else:
+        school_records = pd.DataFrame()
 
     if not school_records.empty and not master_df.empty:
         # Merge prices from master inventory
@@ -117,17 +136,17 @@ else:
         if not merged_records.empty:
             merged_records["unit_cost"] = 90.00
 
-    if not merged_records.empty:
+    if not merged_records.empty and "status" in merged_records.columns:
         # 1. Pending Dispatches/ICS Batches
         pending_items = merged_records[merged_records["status"].astype(str).str.lower() == "for release"]
         pending_count = len(pending_items)
         
         # 2. Total Accountable Value for pickup (Qty * Price)
-        pending_value = (pending_items["quantity_received"] * pending_items["unit_cost"]).sum()
+        pending_value = (pending_items["quantity_received"] * pending_items["unit_cost"]).sum() if not pending_items.empty else 0.0
         
         # 3. Total Received Value (Completed Items)
         received_items = merged_records[merged_records["status"].astype(str).str.lower() == "received"]
-        received_value = (received_items["quantity_received"] * received_items["unit_cost"]).sum()
+        received_value = (received_items["quantity_received"] * received_items["unit_cost"]).sum() if not received_items.empty else 0.0
     else:
         pending_count = 0
         pending_value = 0.0
@@ -163,10 +182,8 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     ws = wb.active
     ws.title = "ICS Form"
 
-    # Ensure Gridlines are visible on print & view
     ws.views.sheetView[0].showGridLines = True
 
-    # Styling Assets
     font_header = Font(name="Calibri", size=10)
     font_title = Font(name="Calibri", size=14, bold=True)
     font_bold = Font(name="Calibri", size=10, bold=True)
@@ -228,7 +245,6 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         c3.number_format = '#,##0.00'
         c3.alignment = align_right
 
-        # Excel formula for Total Cost (= Quantity * Unit Cost)
         c4 = ws.cell(row=current_row, column=4, value=f"=A{current_row}*C{current_row}")
         c4.number_format = '#,##0.00'
         c4.alignment = align_right
@@ -243,7 +259,6 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
 
         current_row += 1
 
-    # Fill blank padded rows to keep standard sheet length
     target_end_row = max(current_row + 3, 26)
     for r in range(current_row, target_end_row):
         for c in range(1, 8):
@@ -253,17 +268,12 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     # 6. Signatures Block
     sig_start = target_end_row + 1
     
-    # Left Header (Custodian)
     ws.merge_cells(start_row=sig_start, start_column=1, end_row=sig_start, end_column=4)
-    c_from = ws.cell(row=sig_start, column=1, value="Received from:")
-    c_from.font = font_bold
+    ws.cell(row=sig_start, column=1, value="Received from:").font = font_bold
     
-    # Right Header (Recipient)
     ws.merge_cells(start_row=sig_start, start_column=5, end_row=sig_start, end_column=7)
-    c_by = ws.cell(row=sig_start, column=5, value="Received by:")
-    c_by.font = font_bold
+    ws.cell(row=sig_start, column=5, value="Received by:").font = font_bold
 
-    # Custodian Name
     ws.merge_cells(start_row=sig_start+2, start_column=1, end_row=sig_start+2, end_column=4)
     c_cust = ws.cell(row=sig_start+2, column=1, value="HERICK REEL D. SORDILLA")
     c_cust.font = font_bold
@@ -275,7 +285,6 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     ws.merge_cells(start_row=sig_start+4, start_column=1, end_row=sig_start+4, end_column=4)
     ws.cell(row=sig_start+4, column=1, value="Date: ____________________").alignment = align_center
 
-    # Recipient Line
     ws.merge_cells(start_row=sig_start+2, start_column=5, end_row=sig_start+2, end_column=7)
     ws.cell(row=sig_start+2, column=5, value="__________________________________").alignment = align_center
 
@@ -285,12 +294,10 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     ws.merge_cells(start_row=sig_start+4, start_column=5, end_row=sig_start+4, end_column=7)
     ws.cell(row=sig_start+4, column=5, value=f"Date: {date_str}").alignment = align_center
 
-    # Signatures Outer Border Outline
     for r in range(sig_start, sig_start+5):
         for c in range(1, 8):
             ws.cell(row=r, column=c).border = thin_border
 
-    # Set Column Widths for clean layout
     col_widths = {1: 12, 2: 10, 3: 14, 4: 16, 5: 32, 6: 20, 7: 20}
     for col_idx, width in col_widths.items():
         ws.column_dimensions[get_column_letter(col_idx)].width = width
@@ -314,7 +321,6 @@ if role == "Custodian View":
 
         col1, col2 = st.columns([1, 2])
 
-        # --- A. ADD NEW BOOKS TO CENTRAL STORAGE ---
         with col1:
             st.subheader("Add / Update Central Stock")
             with st.form("add_book_form"):
@@ -326,7 +332,7 @@ if role == "Custodian View":
                     master_df = load_data("master_inventory")
                     title_clean = title.strip()
 
-                    if not master_df.empty and title_clean in master_df["book_title"].values:
+                    if not master_df.empty and "book_title" in master_df.columns and title_clean in master_df["book_title"].values:
                         master_df.loc[master_df["book_title"] == title_clean, "central_stock"] += stock
                     else:
                         new_row = pd.DataFrame([{"book_title": title_clean, "central_stock": stock}])
@@ -336,12 +342,11 @@ if role == "Custodian View":
                     st.success(f"Added {stock} copies of '{title_clean}'!")
                     st.rerun()
 
-        # --- B. DISPATCH BOOKS GRID ---
         with col2:
             st.subheader("Dispatch Books to Schools")
             master_df = load_data("master_inventory")
 
-            if master_df.empty:
+            if master_df.empty or "book_title" not in master_df.columns:
                 st.info("Please add books to Central Stock first before dispatching.")
             else:
                 master_df = master_df.sort_values(by="book_title", ascending=False)
@@ -426,18 +431,17 @@ if role == "Custodian View":
 
         st.divider()
 
-        # --- C. DATA & MANAGEMENT TABS ---
         tab1, tab2, tab3 = st.tabs(["📊 Central Warehouse Stock", "🚚 Dispatched Inventory Log", "📅 Scheduled Appointments"])
 
         with tab1:
             central_df = load_data("master_inventory")
             if not central_df.empty:
-                st.dataframe(central_df.sort_values(by="book_title", ascending=False), use_container_width=True)
+                st.dataframe(central_df, use_container_width=True)
 
         with tab2:
             dispatched_df = load_data("school_inventory")
             if not dispatched_df.empty:
-                st.dataframe(dispatched_df.sort_values(by="book_title", ascending=False), use_container_width=True)
+                st.dataframe(dispatched_df, use_container_width=True)
 
         with tab3:
             appointments_df = load_data("appointments")
@@ -450,23 +454,20 @@ if role == "Custodian View":
 else:
     st.header(f"Principal Portal - {selected_school}")
 
-    # Notice Box
     st.info(f"ℹ️ **Notice for {selected_school}:** Please be informed that the following books/learning materials assigned to your school are now ready for pickup at the District Office.")
 
     school_df = load_data("school_inventory")
     master_df = load_data("master_inventory")
 
-    if not school_df.empty:
+    if not school_df.empty and "school_name" in school_df.columns:
         filtered = school_df[school_df["school_name"].astype(str).str.strip() == selected_school.strip()]
         
-        # Filter out items already marked as Received
-        if not filtered.empty:
+        if not filtered.empty and "status" in filtered.columns:
             filtered = filtered[filtered["status"].astype(str).str.strip().str.lower() != "received"]
         
         if not filtered.empty:
             summary = filtered.groupby(["book_title", "status"])["quantity_received"].sum().reset_index()
             
-            # --- MERGE BOOK PRICES & USEFUL LIFE FROM MASTER INVENTORY ---
             if not master_df.empty and "unit_cost" in master_df.columns:
                 cols_to_merge = ["book_title", "unit_cost"]
                 if "useful_life" in master_df.columns:
@@ -477,16 +478,13 @@ else:
                 summary["unit_cost"] = 90.00
                 summary["useful_life"] = 3
 
-            # Fill missing values
             summary["unit_cost"] = summary["unit_cost"].fillna(90.00)
             summary["useful_life"] = summary["useful_life"].fillna(3)
 
             summary = summary.sort_values(by="book_title", ascending=False)
             
-            # Display readable summary on web interface
             st.dataframe(summary[["book_title", "status", "quantity_received", "unit_cost"]], use_container_width=True)
 
-            # --- GENERATE & DOWNLOAD OFFICIAL DEPED ICS EXCEL ---
             excel_data = generate_official_deped_ics_excel(
                 school_name=selected_school,
                 date_str=datetime.now().strftime("%B %d, %Y"),
