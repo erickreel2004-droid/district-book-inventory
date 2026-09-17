@@ -5,7 +5,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 
 import openpyxl
-from openpyxl.styles import Alignment, Border, Font, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 # ==========================================
@@ -57,7 +57,6 @@ st.markdown("""
 # ==========================================
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Set ttl=10 (10 seconds) to prevent hitting Google API Rate Limits (60 req/min)
 def load_data(worksheet_name):
     try:
         return conn.read(worksheet=worksheet_name, ttl=10)
@@ -175,7 +174,7 @@ else:
 st.divider()
 
 # ==========================================
-# 4. FORMAL DEPED ICS EXCEL GENERATOR
+# 4. FORMAL DEPED ICS EXCEL GENERATOR (WITH DR & IAR)
 # ==========================================
 def generate_official_deped_ics_excel(school_name, date_str, df_items):
     wb = openpyxl.Workbook()
@@ -196,7 +195,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     thin_border_side = Side(border_style="thin", color="000000")
     thin_border = Border(left=thin_border_side, right=thin_border_side, top=thin_border_side, bottom=thin_border_side)
 
-    # 1. Header (Rows 1-5)
+    # 1. Header (Rows 1-5 across 9 columns A to I)
     headers = [
         "Republic of the Philippines",
         "Department of Education",
@@ -205,13 +204,13 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         "Digos Occidental District"
     ]
     for r_idx, text in enumerate(headers, start=1):
-        ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=7)
+        ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=9)
         cell = ws.cell(row=r_idx, column=1, value=text)
         cell.font = font_header
         cell.alignment = align_center
 
-    # 2. Section Title (Row 7)
-    ws.merge_cells("A7:G7")
+    # 2. Section Title (Row 7 across A7:I7)
+    ws.merge_cells("A7:I7")
     title_cell = ws.cell(row=7, column=1, value="INVENTORY CUSTODIAN SLIP (ICS)")
     title_cell.font = font_title
     title_cell.alignment = align_center
@@ -220,8 +219,11 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     ws.cell(row=11, column=1, value=f"Entity Name: {school_name}").font = font_bold
     ws.cell(row=12, column=1, value="INVENTORY CUSTODIAN SLIP (ICS) No.: ____________________").font = font_bold
 
-    # 4. Table Column Headers (Row 14)
-    table_headers = ["Quantity", "Unit", "Unit Cost", "Total Cost", "Description", "Inventory Item No.", "Estimated Useful Life"]
+    # 4. Table Column Headers (Row 14 - 9 Columns)
+    table_headers = [
+        "Quantity", "Unit", "Unit Cost", "Total Cost", "Description", 
+        "DR No.", "IAR No.", "Inventory Item No.", "Estimated Useful Life"
+    ]
     ws.row_dimensions[14].height = 28
     
     for c_idx, h_text in enumerate(table_headers, start=1):
@@ -236,6 +238,8 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         qty = int(row.get("quantity_received", 0))
         unit_cost = float(row.get("unit_cost", 90.00)) if "unit_cost" in row else 90.00
         desc = str(row.get("book_title", ""))
+        dr_no = str(row.get("dr_no", "")) if "dr_no" in row and pd.notna(row.get("dr_no")) else ""
+        iar_no = str(row.get("iar_no", "")) if "iar_no" in row and pd.notna(row.get("iar_no")) else ""
         useful_life = int(row.get("useful_life", 3))
 
         ws.cell(row=current_row, column=1, value=qty).alignment = align_center
@@ -245,60 +249,70 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         c3.number_format = '#,##0.00'
         c3.alignment = align_right
 
+        # Excel formula for Total Cost (= Quantity * Unit Cost)
         c4 = ws.cell(row=current_row, column=4, value=f"=A{current_row}*C{current_row}")
         c4.number_format = '#,##0.00'
         c4.alignment = align_right
 
         ws.cell(row=current_row, column=5, value=desc).alignment = align_left
-        ws.cell(row=current_row, column=6, value="").alignment = align_center
-        ws.cell(row=current_row, column=7, value=useful_life).alignment = align_center
+        ws.cell(row=current_row, column=6, value=dr_no).alignment = align_center   # DR No.
+        ws.cell(row=current_row, column=7, value=iar_no).alignment = align_center  # IAR No.
+        ws.cell(row=current_row, column=8, value="").alignment = align_center       # Inventory Item No.
+        ws.cell(row=current_row, column=9, value=useful_life).alignment = align_center
 
-        for col in range(1, 8):
+        for col in range(1, 10):
             ws.cell(row=current_row, column=col).border = thin_border
             ws.cell(row=current_row, column=col).font = font_regular
 
         current_row += 1
 
+    # Fill blank padded rows to keep standard sheet length
     target_end_row = max(current_row + 3, 26)
     for r in range(current_row, target_end_row):
-        for c in range(1, 8):
+        for c in range(1, 10):
             cell = ws.cell(row=r, column=c, value="")
             cell.border = thin_border
 
-    # 6. Signatures Block
+    # 6. Signatures Block (Spanning 9 Columns: Cols 1-5 for Custodian, Cols 6-9 for Recipient)
     sig_start = target_end_row + 1
     
-    ws.merge_cells(start_row=sig_start, start_column=1, end_row=sig_start, end_column=4)
+    # Left Header (Custodian)
+    ws.merge_cells(start_row=sig_start, start_column=1, end_row=sig_start, end_column=5)
     ws.cell(row=sig_start, column=1, value="Received from:").font = font_bold
     
-    ws.merge_cells(start_row=sig_start, start_column=5, end_row=sig_start, end_column=7)
-    ws.cell(row=sig_start, column=5, value="Received by:").font = font_bold
+    # Right Header (Recipient)
+    ws.merge_cells(start_row=sig_start, start_column=6, end_row=sig_start, end_column=9)
+    ws.cell(row=sig_start, column=6, value="Received by:").font = font_bold
 
-    ws.merge_cells(start_row=sig_start+2, start_column=1, end_row=sig_start+2, end_column=4)
+    # Custodian Name
+    ws.merge_cells(start_row=sig_start+2, start_column=1, end_row=sig_start+2, end_column=5)
     c_cust = ws.cell(row=sig_start+2, column=1, value="HERICK REEL D. SORDILLA")
     c_cust.font = font_bold
     c_cust.alignment = align_center
 
-    ws.merge_cells(start_row=sig_start+3, start_column=1, end_row=sig_start+3, end_column=4)
+    ws.merge_cells(start_row=sig_start+3, start_column=1, end_row=sig_start+3, end_column=5)
     ws.cell(row=sig_start+3, column=1, value="District Property Custodian").alignment = align_center
 
-    ws.merge_cells(start_row=sig_start+4, start_column=1, end_row=sig_start+4, end_column=4)
+    ws.merge_cells(start_row=sig_start+4, start_column=1, end_row=sig_start+4, end_column=5)
     ws.cell(row=sig_start+4, column=1, value="Date: ____________________").alignment = align_center
 
-    ws.merge_cells(start_row=sig_start+2, start_column=5, end_row=sig_start+2, end_column=7)
-    ws.cell(row=sig_start+2, column=5, value="__________________________________").alignment = align_center
+    # Recipient Line
+    ws.merge_cells(start_row=sig_start+2, start_column=6, end_row=sig_start+2, end_column=9)
+    ws.cell(row=sig_start+2, column=6, value="__________________________________").alignment = align_center
 
-    ws.merge_cells(start_row=sig_start+3, start_column=5, end_row=sig_start+3, end_column=7)
-    ws.cell(row=sig_start+3, column=5, value="Signature over Printed Name of End-User").alignment = align_center
+    ws.merge_cells(start_row=sig_start+3, start_column=6, end_row=sig_start+3, end_column=9)
+    ws.cell(row=sig_start+3, column=6, value="Signature over Printed Name of End-User").alignment = align_center
 
-    ws.merge_cells(start_row=sig_start+4, start_column=5, end_row=sig_start+4, end_column=7)
-    ws.cell(row=sig_start+4, column=5, value=f"Date: {date_str}").alignment = align_center
+    ws.merge_cells(start_row=sig_start+4, start_column=6, end_row=sig_start+4, end_column=9)
+    ws.cell(row=sig_start+4, column=6, value=f"Date: {date_str}").alignment = align_center
 
+    # Signatures Outer Border Outline
     for r in range(sig_start, sig_start+5):
-        for c in range(1, 8):
+        for c in range(1, 10):
             ws.cell(row=r, column=c).border = thin_border
 
-    col_widths = {1: 12, 2: 10, 3: 14, 4: 16, 5: 32, 6: 20, 7: 20}
+    # Set Column Widths for clean 9-column layout
+    col_widths = {1: 10, 2: 8, 3: 12, 4: 14, 5: 30, 6: 14, 7: 14, 8: 18, 9: 18}
     for col_idx, width in col_widths.items():
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
@@ -326,6 +340,10 @@ if role == "Custodian View":
             with st.form("add_book_form"):
                 title = st.text_input("Book Title")
                 stock = st.number_input("Quantity to Add", min_value=1, step=1, value=100)
+                unit_cost = st.number_input("Unit Cost (₱)", min_value=0.0, step=0.01, value=90.00, format="%.2f")
+                dr_no = st.text_input("DR No. (Optional)")
+                iar_no = st.text_input("IAR No. (Optional)")
+                useful_life = st.number_input("Useful Life (Years)", min_value=1, step=1, value=3)
                 submit = st.form_submit_button("Add to Master Stock")
 
                 if submit and title:
@@ -334,8 +352,19 @@ if role == "Custodian View":
 
                     if not master_df.empty and "book_title" in master_df.columns and title_clean in master_df["book_title"].values:
                         master_df.loc[master_df["book_title"] == title_clean, "central_stock"] += stock
+                        master_df.loc[master_df["book_title"] == title_clean, "unit_cost"] = unit_cost
+                        master_df.loc[master_df["book_title"] == title_clean, "dr_no"] = dr_no
+                        master_df.loc[master_df["book_title"] == title_clean, "iar_no"] = iar_no
+                        master_df.loc[master_df["book_title"] == title_clean, "useful_life"] = useful_life
                     else:
-                        new_row = pd.DataFrame([{"book_title": title_clean, "central_stock": stock}])
+                        new_row = pd.DataFrame([{
+                            "book_title": title_clean, 
+                            "central_stock": stock,
+                            "unit_cost": unit_cost,
+                            "dr_no": dr_no,
+                            "iar_no": iar_no,
+                            "useful_life": useful_life
+                        }])
                         master_df = pd.concat([master_df, new_row], ignore_index=True)
 
                     conn.update(worksheet="master_inventory", data=master_df)
@@ -468,22 +497,34 @@ else:
         if not filtered.empty:
             summary = filtered.groupby(["book_title", "status"])["quantity_received"].sum().reset_index()
             
-            if not master_df.empty and "unit_cost" in master_df.columns:
-                cols_to_merge = ["book_title", "unit_cost"]
-                if "useful_life" in master_df.columns:
-                    cols_to_merge.append("useful_life")
+            # --- MERGE BOOK DETAILS (PRICES, DR, IAR, USEFUL LIFE) FROM MASTER INVENTORY ---
+            if not master_df.empty:
+                cols_to_merge = ["book_title"]
+                for col_name in ["unit_cost", "useful_life", "dr_no", "iar_no"]:
+                    if col_name in master_df.columns:
+                        cols_to_merge.append(col_name)
                 
                 summary = summary.merge(master_df[cols_to_merge], on="book_title", how="left")
-            else:
+            
+            if "unit_cost" not in summary.columns:
                 summary["unit_cost"] = 90.00
-                summary["useful_life"] = 3
+            else:
+                summary["unit_cost"] = summary["unit_cost"].fillna(90.00)
 
-            summary["unit_cost"] = summary["unit_cost"].fillna(90.00)
-            summary["useful_life"] = summary["useful_life"].fillna(3)
+            if "useful_life" not in summary.columns:
+                summary["useful_life"] = 3
+            else:
+                summary["useful_life"] = summary["useful_life"].fillna(3)
 
             summary = summary.sort_values(by="book_title", ascending=False)
             
-            st.dataframe(summary[["book_title", "status", "quantity_received", "unit_cost"]], use_container_width=True)
+            # Display readable summary on web interface
+            display_cols = ["book_title", "status", "quantity_received", "unit_cost"]
+            for col_opt in ["dr_no", "iar_no"]:
+                if col_opt in summary.columns:
+                    display_cols.append(col_opt)
+
+            st.dataframe(summary[display_cols], use_container_width=True)
 
             excel_data = generate_official_deped_ics_excel(
                 school_name=selected_school,
