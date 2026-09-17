@@ -249,11 +249,11 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         c3.number_format = '#,##0.00'
         c3.alignment = align_right
 
-        # Excel formula for Total Cost (= Quantity * Unit Cost)
-       total_cost = qty * unit_cost
-c4 = ws.cell(row=current_row, column=4, value=total_cost)
-c4.number_format = '#,##0.00'
-c4.alignment = align_right
+        # Calculated Total Cost
+        total_cost = qty * unit_cost
+        c4 = ws.cell(row=current_row, column=4, value=total_cost)
+        c4.number_format = '#,##0.00'
+        c4.alignment = align_right
 
         ws.cell(row=current_row, column=5, value=desc).alignment = align_left
         ws.cell(row=current_row, column=6, value=dr_no).alignment = align_center   # DR No.
@@ -274,18 +274,15 @@ c4.alignment = align_right
             cell = ws.cell(row=r, column=c, value="")
             cell.border = thin_border
 
-    # 6. Signatures Block (Spanning 9 Columns: Cols 1-5 for Custodian, Cols 6-9 for Recipient)
+    # 6. Signatures Block
     sig_start = target_end_row + 1
     
-    # Left Header (Custodian)
     ws.merge_cells(start_row=sig_start, start_column=1, end_row=sig_start, end_column=5)
     ws.cell(row=sig_start, column=1, value="Received from:").font = font_bold
     
-    # Right Header (Recipient)
     ws.merge_cells(start_row=sig_start, start_column=6, end_row=sig_start, end_column=9)
     ws.cell(row=sig_start, column=6, value="Received by:").font = font_bold
 
-    # Custodian Name
     ws.merge_cells(start_row=sig_start+2, start_column=1, end_row=sig_start+2, end_column=5)
     c_cust = ws.cell(row=sig_start+2, column=1, value="HERICK REEL D. SORDILLA")
     c_cust.font = font_bold
@@ -297,7 +294,6 @@ c4.alignment = align_right
     ws.merge_cells(start_row=sig_start+4, start_column=1, end_row=sig_start+4, end_column=5)
     ws.cell(row=sig_start+4, column=1, value="Date: ____________________").alignment = align_center
 
-    # Recipient Line
     ws.merge_cells(start_row=sig_start+2, start_column=6, end_row=sig_start+2, end_column=9)
     ws.cell(row=sig_start+2, column=6, value="__________________________________").alignment = align_center
 
@@ -307,12 +303,10 @@ c4.alignment = align_right
     ws.merge_cells(start_row=sig_start+4, start_column=6, end_row=sig_start+4, end_column=9)
     ws.cell(row=sig_start+4, column=6, value=f"Date: {date_str}").alignment = align_center
 
-    # Signatures Outer Border Outline
     for r in range(sig_start, sig_start+5):
         for c in range(1, 10):
             ws.cell(row=r, column=c).border = thin_border
 
-    # Set Column Widths for clean 9-column layout
     col_widths = {1: 10, 2: 8, 3: 12, 4: 14, 5: 30, 6: 14, 7: 14, 8: 18, 9: 18}
     for col_idx, width in col_widths.items():
         ws.column_dimensions[get_column_letter(col_idx)].width = width
