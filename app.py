@@ -254,6 +254,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
 c4 = ws.cell(row=current_row, column=4, value=total_cost)
 c4.number_format = '#,##0.00'
 c4.alignment = align_right
+
         ws.cell(row=current_row, column=5, value=desc).alignment = align_left
         ws.cell(row=current_row, column=6, value=dr_no).alignment = align_center   # DR No.
         ws.cell(row=current_row, column=7, value=iar_no).alignment = align_center  # IAR No.
