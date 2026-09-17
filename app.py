@@ -174,7 +174,7 @@ else:
 st.divider()
 
 # ==========================================
-# 4. FORMAL DEPED ICS EXCEL GENERATOR (WITH DR & IAR)
+# 4. FORMAL DEPED ICS EXCEL GENERATOR (WITH NO. OF LM, DR & IAR)
 # ==========================================
 def generate_official_deped_ics_excel(school_name, date_str, df_items):
     wb = openpyxl.Workbook()
@@ -195,7 +195,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     thin_border_side = Side(border_style="thin", color="000000")
     thin_border = Border(left=thin_border_side, right=thin_border_side, top=thin_border_side, bottom=thin_border_side)
 
-    # 1. Header (Rows 1-5 across 9 columns A to I)
+    # 1. Header (Rows 1-5 across 10 columns A to J)
     headers = [
         "Republic of the Philippines",
         "Department of Education",
@@ -204,13 +204,13 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         "Digos Occidental District"
     ]
     for r_idx, text in enumerate(headers, start=1):
-        ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=9)
+        ws.merge_cells(start_row=r_idx, start_column=1, end_row=r_idx, end_column=10)
         cell = ws.cell(row=r_idx, column=1, value=text)
         cell.font = font_header
         cell.alignment = align_center
 
-    # 2. Section Title (Row 7 across A7:I7)
-    ws.merge_cells("A7:I7")
+    # 2. Section Title (Row 7 across A7:J7)
+    ws.merge_cells("A7:J7")
     title_cell = ws.cell(row=7, column=1, value="INVENTORY CUSTODIAN SLIP (ICS)")
     title_cell.font = font_title
     title_cell.alignment = align_center
@@ -219,10 +219,10 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     ws.cell(row=11, column=1, value=f"Entity Name: {school_name}").font = font_bold
     ws.cell(row=12, column=1, value="INVENTORY CUSTODIAN SLIP (ICS) No.: ____________________").font = font_bold
 
-    # 4. Table Column Headers (Row 14 - 9 Columns)
+    # 4. Table Column Headers (Row 14 - 10 Columns)
     table_headers = [
         "Quantity", "Unit", "Unit Cost", "Total Cost", "Description", 
-        "DR No.", "IAR No.", "Inventory Item No.", "Estimated Useful Life"
+        "No. of LM", "DR No.", "IAR No.", "Inventory Item No.", "Estimated Useful Life"
     ]
     ws.row_dimensions[14].height = 28
     
@@ -238,6 +238,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         qty = int(row.get("quantity_received", 0))
         unit_cost = float(row.get("unit_cost", 90.00)) if "unit_cost" in row else 90.00
         desc = str(row.get("book_title", ""))
+        no_of_lm = str(row.get("no_of_lm", qty)) if "no_of_lm" in row and pd.notna(row.get("no_of_lm")) else qty
         dr_no = str(row.get("dr_no", "")) if "dr_no" in row and pd.notna(row.get("dr_no")) else ""
         iar_no = str(row.get("iar_no", "")) if "iar_no" in row and pd.notna(row.get("iar_no")) else ""
         useful_life = int(row.get("useful_life", 3))
@@ -255,14 +256,14 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         c4.number_format = '#,##0.00'
         c4.alignment = align_right
 
-       ws.cell(row=current_row, column=5, value=desc).alignment = align_left
+        ws.cell(row=current_row, column=5, value=desc).alignment = align_left
         ws.cell(row=current_row, column=6, value=no_of_lm).alignment = align_center  # No. of LM
         ws.cell(row=current_row, column=7, value=dr_no).alignment = align_center     # DR No.
         ws.cell(row=current_row, column=8, value=iar_no).alignment = align_center    # IAR No.
         ws.cell(row=current_row, column=9, value="").alignment = align_center         # Inventory Item No.
         ws.cell(row=current_row, column=10, value=useful_life).alignment = align_center
 
-        for col in range(1, 10):
+        for col in range(1, 11):
             ws.cell(row=current_row, column=col).border = thin_border
             ws.cell(row=current_row, column=col).font = font_regular
 
@@ -271,17 +272,17 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     # Fill blank padded rows to keep standard sheet length
     target_end_row = max(current_row + 3, 26)
     for r in range(current_row, target_end_row):
-        for c in range(1, 10):
+        for c in range(1, 11):
             cell = ws.cell(row=r, column=c, value="")
             cell.border = thin_border
 
-    # 6. Signatures Block
+    # 6. Signatures Block (Spanning 10 Columns: Cols 1-5 for Custodian, Cols 6-10 for Recipient)
     sig_start = target_end_row + 1
     
     ws.merge_cells(start_row=sig_start, start_column=1, end_row=sig_start, end_column=5)
     ws.cell(row=sig_start, column=1, value="Received from:").font = font_bold
     
-    ws.merge_cells(start_row=sig_start, start_column=6, end_row=sig_start, end_column=9)
+    ws.merge_cells(start_row=sig_start, start_column=6, end_row=sig_start, end_column=10)
     ws.cell(row=sig_start, column=6, value="Received by:").font = font_bold
 
     ws.merge_cells(start_row=sig_start+2, start_column=1, end_row=sig_start+2, end_column=5)
@@ -295,20 +296,21 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     ws.merge_cells(start_row=sig_start+4, start_column=1, end_row=sig_start+4, end_column=5)
     ws.cell(row=sig_start+4, column=1, value="Date: ____________________").alignment = align_center
 
-    ws.merge_cells(start_row=sig_start+2, start_column=6, end_row=sig_start+2, end_column=9)
+    ws.merge_cells(start_row=sig_start+2, start_column=6, end_row=sig_start+2, end_column=10)
     ws.cell(row=sig_start+2, column=6, value="__________________________________").alignment = align_center
 
-    ws.merge_cells(start_row=sig_start+3, start_column=6, end_row=sig_start+3, end_column=9)
+    ws.merge_cells(start_row=sig_start+3, start_column=6, end_row=sig_start+3, end_column=10)
     ws.cell(row=sig_start+3, column=6, value="Signature over Printed Name of End-User").alignment = align_center
 
-    ws.merge_cells(start_row=sig_start+4, start_column=6, end_row=sig_start+4, end_column=9)
+    ws.merge_cells(start_row=sig_start+4, start_column=6, end_row=sig_start+4, end_column=10)
     ws.cell(row=sig_start+4, column=6, value=f"Date: {date_str}").alignment = align_center
 
     for r in range(sig_start, sig_start+5):
-        for c in range(1, 10):
+        for c in range(1, 11):
             ws.cell(row=r, column=c).border = thin_border
 
-    col_widths = {1: 10, 2: 8, 3: 12, 4: 14, 5: 30, 6: 14, 7: 14, 8: 18, 9: 18}
+    # Set Column Widths for clean 10-column layout
+    col_widths = {1: 10, 2: 8, 3: 12, 4: 14, 5: 30, 6: 12, 7: 14, 8: 14, 9: 18, 10: 18}
     for col_idx, width in col_widths.items():
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
