@@ -255,11 +255,12 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         c4.number_format = '#,##0.00'
         c4.alignment = align_right
 
-        ws.cell(row=current_row, column=5, value=desc).alignment = align_left
-        ws.cell(row=current_row, column=6, value=dr_no).alignment = align_center   # DR No.
-        ws.cell(row=current_row, column=7, value=iar_no).alignment = align_center  # IAR No.
-        ws.cell(row=current_row, column=8, value="").alignment = align_center       # Inventory Item No.
-        ws.cell(row=current_row, column=9, value=useful_life).alignment = align_center
+       ws.cell(row=current_row, column=5, value=desc).alignment = align_left
+        ws.cell(row=current_row, column=6, value=no_of_lm).alignment = align_center  # No. of LM
+        ws.cell(row=current_row, column=7, value=dr_no).alignment = align_center     # DR No.
+        ws.cell(row=current_row, column=8, value=iar_no).alignment = align_center    # IAR No.
+        ws.cell(row=current_row, column=9, value="").alignment = align_center         # Inventory Item No.
+        ws.cell(row=current_row, column=10, value=useful_life).alignment = align_center
 
         for col in range(1, 10):
             ws.cell(row=current_row, column=col).border = thin_border
