@@ -9,45 +9,74 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 # ==========================================
-# 1. PAGE CONFIGURATION & CUSTOM CSS
+# 1. PAGE CONFIGURATION & PROFESSIONAL DEPED CSS
 # ==========================================
 st.set_page_config(page_title="District Book Inventory", layout="wide")
 
 st.markdown("""
     <style>
-    /* Dark Slate Sidebar styling */
+    /* Main Background */
+    .stApp {
+        background-color: #F8FAFC !important;
+    }
+
+    /* Dark Navy Sidebar styling */
     [data-testid="stSidebar"] {
-        background-color: #1E293B !important;
+        background-color: #0F172A !important;
     }
     [data-testid="stSidebar"] * {
-        color: #FFFFFF !important;
+        color: #F8FAFC !important;
     }
 
-    /* Main Page Select Box & Inputs Styling */
-    div[data-baseweb="select"] > div {
+    /* Fix Main Page Select Box & Input Backgrounds */
+    div[data-baseweb="select"] > div, 
+    div[data-baseweb="input"] > div,
+    textarea {
         background-color: #FFFFFF !important;
         border: 1px solid #CBD5E1 !important;
+        border-radius: 6px !important;
     }
-    
-    /* Force main page selectbox text to be clear dark slate */
+
+    /* Force Selectbox & Input Text to Crisp Navy */
     div[data-baseweb="select"] span,
-    div[data-baseweb="select"] div {
-        color: #0F172A !important;
-    }
-
-    textarea, div[data-baseweb="input"] > div {
-        background-color: #FFFFFF !important;
-        color: #0F172A !important;
-        border: 1px solid #CBD5E1 !important;
-    }
-
+    div[data-baseweb="select"] div,
     input, textarea {
         color: #0F172A !important;
+        font-weight: 500 !important;
     }
 
+    /* Input & Select Labels */
     .stTextInput label, .stDateInput label, .stTextArea label, .stSelectbox label {
-        color: #0F172A !important;
-        font-weight: 600;
+        color: #1E293B !important;
+        font-weight: 700 !important;
+    }
+
+    /* Metric Cards Styling */
+    [data-testid="stMetricValue"] {
+        color: #1D4ED8 !important;
+        font-weight: 800 !important;
+    }
+    
+    [data-testid="stMetricLabel"] {
+        color: #475569 !important;
+        font-weight: 600 !important;
+    }
+
+    /* Primary Buttons (DepEd Royal Blue) */
+    .stButton > button[kind="primary"] {
+        background-color: #1D4ED8 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        font-weight: 600 !important;
+        border-radius: 6px !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background-color: #1E40AF !important;
+    }
+
+    /* Info Notice Box */
+    .stAlert {
+        border-radius: 8px !important;
     }
     </style>
 """, unsafe_allow_html=True)
