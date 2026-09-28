@@ -203,7 +203,7 @@ else:
 st.divider()
 
 # ==========================================
-# 4. FORMAL DEPED ICS EXCEL GENERATOR (WITH NO. OF LM, DR & IAR)
+# 4. FORMAL DEPED ICS EXCEL GENERATOR (WITH NO. OF TM, DR & IAR)
 # ==========================================
 def generate_official_deped_ics_excel(school_name, date_str, df_items):
     wb = openpyxl.Workbook()
@@ -251,7 +251,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     # 4. Table Column Headers (Row 14 - 10 Columns)
     table_headers = [
         "Quantity", "Unit", "Unit Cost", "Total Cost", "Description", 
-        "No. of LM", "DR No.", "IAR No.", "Inventory Item No.", "Estimated Useful Life"
+        "No. of TM", "DR No.", "IAR No.", "Inventory Item No.", "Estimated Useful Life"
     ]
     ws.row_dimensions[14].height = 28
     
@@ -286,7 +286,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         c4.alignment = align_right
 
         ws.cell(row=current_row, column=5, value=desc).alignment = align_left
-        ws.cell(row=current_row, column=6, value="").alignment = align_center  # No. of LM
+        ws.cell(row=current_row, column=6, value="").alignment = align_center  # No. of TM
         ws.cell(row=current_row, column=7, value=dr_no).alignment = align_center     # DR No.
         ws.cell(row=current_row, column=8, value=iar_no).alignment = align_center    # IAR No.
         ws.cell(row=current_row, column=9, value="").alignment = align_center         # Inventory Item No.
