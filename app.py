@@ -267,7 +267,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         qty = int(row.get("quantity_received", 0))
         unit_cost = float(row.get("unit_cost", 90.00)) if "unit_cost" in row else 90.00
         desc = str(row.get("book_title", ""))
-        no_of_lm = str(row.get("no_of_lm", qty)) if "no_of_lm" in row and pd.notna(row.get("no_of_lm")) else qty
+        no_of_tm = str(row.get("no_of_tm", qty)) if "no_of_tm" in row and pd.notna(row.get("no_of_tm")) else qty
         dr_no = str(row.get("dr_no", "")) if "dr_no" in row and pd.notna(row.get("dr_no")) else ""
         iar_no = str(row.get("iar_no", "")) if "iar_no" in row and pd.notna(row.get("iar_no")) else ""
         useful_life = int(row.get("useful_life", 3))
