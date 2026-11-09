@@ -28,7 +28,7 @@ st.markdown("""
         color: #F8FAFC !important;
     }
 
-    /* Fix Main Page Select Box & Input Backgrounds */
+    /* Main Page Select Box & Inputs Styling */
     div[data-baseweb="select"] > div, 
     div[data-baseweb="input"] > div,
     textarea {
@@ -151,9 +151,14 @@ else:
         school_records = pd.DataFrame()
 
     if not school_records.empty and not master_df.empty:
-        # Merge prices from master inventory
+        # Case-insensitive merge for price calculation
+        school_records["book_title_clean"] = school_records["book_title"].astype(str).str.strip().str.lower()
         cols_to_merge = ["book_title", "unit_cost"] if "unit_cost" in master_df.columns else ["book_title"]
-        merged_records = school_records.merge(master_df[cols_to_merge], on="book_title", how="left")
+        master_merge = master_df[cols_to_merge].copy()
+        master_merge["book_title_clean"] = master_merge["book_title"].astype(str).str.strip().str.lower()
+        master_merge = master_merge.drop(columns=["book_title"])
+
+        merged_records = school_records.merge(master_merge, on="book_title_clean", how="left").drop(columns=["book_title_clean"])
         
         if "unit_cost" not in merged_records.columns:
             merged_records["unit_cost"] = 90.00
@@ -203,7 +208,7 @@ else:
 st.divider()
 
 # ==========================================
-# 4. FORMAL DEPED ICS EXCEL GENERATOR (WITH NO. OF TM, DR & IAR)
+# 4. FORMAL DEPED ICS EXCEL GENERATOR (WITH NO. OF LM, DR & IAR)
 # ==========================================
 def generate_official_deped_ics_excel(school_name, date_str, df_items):
     wb = openpyxl.Workbook()
@@ -251,7 +256,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     # 4. Table Column Headers (Row 14 - 10 Columns)
     table_headers = [
         "Quantity", "Unit", "Unit Cost", "Total Cost", "Description", 
-        "No. of TM", "DR No.", "IAR No.", "Inventory Item No.", "Estimated Useful Life"
+        "No. of LM", "DR No.", "IAR No.", "Inventory Item No.", "Estimated Useful Life"
     ]
     ws.row_dimensions[14].height = 28
     
@@ -267,7 +272,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         qty = int(row.get("quantity_received", 0))
         unit_cost = float(row.get("unit_cost", 90.00)) if "unit_cost" in row else 90.00
         desc = str(row.get("book_title", ""))
-        no_of_tm = str(row.get("no_of_tm", qty)) if "no_of_tm" in row and pd.notna(row.get("no_of_tm")) else qty
+        no_of_lm = str(row.get("no_of_lm", qty)) if "no_of_lm" in row and pd.notna(row.get("no_of_lm")) else qty
         dr_no = str(row.get("dr_no", "")) if "dr_no" in row and pd.notna(row.get("dr_no")) else ""
         iar_no = str(row.get("iar_no", "")) if "iar_no" in row and pd.notna(row.get("iar_no")) else ""
         useful_life = int(row.get("useful_life", 3))
@@ -286,7 +291,7 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
         c4.alignment = align_right
 
         ws.cell(row=current_row, column=5, value=desc).alignment = align_left
-        ws.cell(row=current_row, column=6, value="").alignment = align_center  # No. of TM
+        ws.cell(row=current_row, column=6, value=no_of_lm).alignment = align_center  # No. of LM
         ws.cell(row=current_row, column=7, value=dr_no).alignment = align_center     # DR No.
         ws.cell(row=current_row, column=8, value=iar_no).alignment = align_center    # IAR No.
         ws.cell(row=current_row, column=9, value="").alignment = align_center         # Inventory Item No.
@@ -487,7 +492,12 @@ if role == "Custodian View":
 
         st.divider()
 
-        tab1, tab2, tab3 = st.tabs(["📊 Central Warehouse Stock", "🚚 Dispatched Inventory Log", "📅 Scheduled Appointments"])
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Central Warehouse Stock", 
+            "🚚 Dispatched Inventory Log", 
+            "📅 Scheduled Appointments",
+            "📈 Supervisor Overview (Uncollected)"
+        ])
 
         with tab1:
             central_df = load_data("master_inventory")
@@ -503,6 +513,79 @@ if role == "Custodian View":
             appointments_df = load_data("appointments")
             if not appointments_df.empty:
                 st.dataframe(appointments_df, use_container_width=True)
+
+        with tab4:
+            st.subheader("📊 District Supervisor Overview: Uncollected Books")
+
+            school_df = load_data("school_inventory")
+            master_df = load_data("master_inventory")
+
+            if not school_df.empty and "status" in school_df.columns:
+                pending_df = school_df[school_df["status"].astype(str).str.strip().str.lower() == "for release"].copy()
+
+                if not pending_df.empty:
+                    if not master_df.empty:
+                        cols_to_merge = ["book_title"]
+                        if "unit_cost" in master_df.columns:
+                            cols_to_merge.append("unit_cost")
+                        
+                        pending_df["book_title_clean"] = pending_df["book_title"].astype(str).str.strip().str.lower()
+                        master_merge = master_df[cols_to_merge].copy()
+                        master_merge["book_title_clean"] = master_merge["book_title"].astype(str).str.strip().str.lower()
+                        master_merge = master_merge.drop(columns=["book_title"])
+                        
+                        pending_df = pending_df.merge(master_merge, on="book_title_clean", how="left").drop(columns=["book_title_clean"])
+
+                    if "unit_cost" not in pending_df.columns:
+                        pending_df["unit_cost"] = 90.00
+                    else:
+                        pending_df["unit_cost"] = pending_df["unit_cost"].fillna(90.00)
+
+                    pending_df["total_value"] = pending_df["quantity_received"] * pending_df["unit_cost"]
+
+                    school_summary = pending_df.groupby("school_name").agg(
+                        pending_titles=("book_title", "nunique"),
+                        total_copies=("quantity_received", "sum"),
+                        total_value=("total_value", "sum")
+                    ).reset_index().sort_values(by="total_copies", ascending=False)
+
+                    tot_copies = int(school_summary["total_copies"].sum())
+                    tot_schools_pending = len(school_summary)
+                    tot_value = school_summary["total_value"].sum()
+
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("📦 Total Books Ready for Pickup", f"{tot_copies:,} pcs")
+                    m2.metric("🏫 Schools with Uncollected Books", f"{tot_schools_pending} Schools")
+                    m3.metric("💵 Total Value at Warehouse", f"₱{tot_value:,.2f}")
+
+                    st.markdown("### 🏫 List of Schools with Pending Pickups")
+                    
+                    st.dataframe(
+                        school_summary.rename(columns={
+                            "school_name": "School Name",
+                            "pending_titles": "Uncollected Titles",
+                            "total_copies": "Total Copies Pending",
+                            "total_value": "Total Value (₱)"
+                        }),
+                        use_container_width=True
+                    )
+
+                    with st.expander("🔍 View Detailed Item Breakdown by School"):
+                        selected_super_school = st.selectbox("Select School to Inspect:", school_summary["school_name"].tolist())
+                        detail_records = pending_df[pending_df["school_name"] == selected_super_school]
+                        st.dataframe(
+                            detail_records[["book_title", "quantity_received", "unit_cost", "total_value"]].rename(columns={
+                                "book_title": "Book Title",
+                                "quantity_received": "Copies Waiting",
+                                "unit_cost": "Unit Cost (₱)",
+                                "total_value": "Total Cost (₱)"
+                            }),
+                            use_container_width=True
+                        )
+                else:
+                    st.success("🎉 All allocated books have been picked up across all 16 schools!")
+            else:
+                st.info("No dispatch data logged yet.")
 
 # ==========================================
 # 6. PRINCIPAL VIEW
@@ -524,14 +607,19 @@ else:
         if not filtered.empty:
             summary = filtered.groupby(["book_title", "status"])["quantity_received"].sum().reset_index()
             
-            # --- MERGE BOOK DETAILS (PRICES, DR, IAR, USEFUL LIFE) FROM MASTER INVENTORY ---
+            # --- CASE-INSENSITIVE MERGE FOR DR & IAR DATA ---
             if not master_df.empty:
                 cols_to_merge = ["book_title"]
                 for col_name in ["unit_cost", "useful_life", "dr_no", "iar_no"]:
                     if col_name in master_df.columns:
                         cols_to_merge.append(col_name)
                 
-                summary = summary.merge(master_df[cols_to_merge], on="book_title", how="left")
+                summary["book_title_clean"] = summary["book_title"].astype(str).str.strip().str.lower()
+                master_merge_df = master_df[cols_to_merge].copy()
+                master_merge_df["book_title_clean"] = master_merge_df["book_title"].astype(str).str.strip().str.lower()
+                master_merge_df = master_merge_df.drop(columns=["book_title"])
+
+                summary = summary.merge(master_merge_df, on="book_title_clean", how="left").drop(columns=["book_title_clean"])
             
             if "unit_cost" not in summary.columns:
                 summary["unit_cost"] = 90.00
@@ -567,89 +655,6 @@ else:
                 type="primary"
             )
         else:
-
-            # ==========================================
-# SUPERVISOR QUICK-LOOK DASHBOARD (UNCOLLECTED BOOKS)
-# ==========================================
-st.subheader("📊 District Supervisor Overview: Uncollected Books")
-
-school_df = load_data("school_inventory")
-master_df = load_data("master_inventory")
-
-if not school_df.empty and "status" in school_df.columns:
-    # Filter items ready for pickup ("For Release")
-    pending_df = school_df[school_df["status"].astype(str).str.strip().str.lower() == "for release"].copy()
-
-    if not pending_df.empty:
-        # Merge prices from master inventory for total value calculations
-        if not master_df.empty:
-            cols_to_merge = ["book_title"]
-            if "unit_cost" in master_df.columns:
-                cols_to_merge.append("unit_cost")
-            
-            # Case-insensitive title match
-            pending_df["book_title_clean"] = pending_df["book_title"].astype(str).str.strip().str.lower()
-            master_merge = master_df[cols_to_merge].copy()
-            master_merge["book_title_clean"] = master_merge["book_title"].astype(str).str.strip().str.lower()
-            master_merge = master_merge.drop(columns=["book_title"])
-            
-            pending_df = pending_df.merge(master_merge, on="book_title_clean", how="left").drop(columns=["book_title_clean"])
-
-        if "unit_cost" not in pending_df.columns:
-            pending_df["unit_cost"] = 90.00
-        else:
-            pending_df["unit_cost"] = pending_df["unit_cost"].fillna(90.00)
-
-        # Calculate Total Cost per record
-        pending_df["total_value"] = pending_df["quantity_received"] * pending_df["unit_cost"]
-
-        # Aggregate by School
-        school_summary = pending_df.groupby("school_name").agg(
-            pending_titles=("book_title", "nunique"),
-            total_copies=("quantity_received", "sum"),
-            total_value=("total_value", "sum")
-        ).reset_index().sort_values(by="total_copies", ascending=False)
-
-        # Top Executive Metrics
-        tot_copies = int(school_summary["total_copies"].sum())
-        tot_schools_pending = len(school_summary)
-        tot_value = school_summary["total_value"].sum()
-
-        m1, m2, m3 = st.columns(3)
-        m1.metric("📦 Total Books Ready for Pickup", f"{tot_copies:,} pcs")
-        m2.metric("🏫 Schools with Uncollected Books", f"{tot_schools_pending} Schools")
-        m3.metric("💵 Total Value at Warehouse", f"₱{tot_value:,.2f}")
-
-        st.markdown("### 🏫 List of Schools with Pending Pickups")
-        
-        # Display clean summary table for Supervisor review
-        st.dataframe(
-            school_summary.rename(columns={
-                "school_name": "School Name",
-                "pending_titles": "Uncollected Titles",
-                "total_copies": "Total Copies Pending",
-                "total_value": "Total Value (₱)"
-            }),
-            use_container_width=True
-        )
-
-        # Quick Detailed Breakdown per School
-        with st.expander("🔍 View Detailed Item Breakdown by School"):
-            selected_super_school = st.selectbox("Select School to Inspect:", school_summary["school_name"].tolist())
-            detail_records = pending_df[pending_df["school_name"] == selected_super_school]
-            st.dataframe(
-                detail_records[["book_title", "quantity_received", "unit_cost", "total_value"]].rename(columns={
-                    "book_title": "Book Title",
-                    "quantity_received": "Copies Waiting",
-                    "unit_cost": "Unit Cost (₱)",
-                    "total_value": "Total Cost (₱)"
-                }),
-                use_container_width=True
-            )
-    else:
-        st.success("🎉 All allocated books have been picked up across all 16 schools!")
-else:
-    st.info("No dispatch data logged yet.")
             st.success("🎉 No pending dispatches for this school. All books have been received!")
     else:
         st.info("No dispatches logged for this school yet.")
