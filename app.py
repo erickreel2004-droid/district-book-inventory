@@ -567,6 +567,89 @@ else:
                 type="primary"
             )
         else:
+
+            # ==========================================
+# SUPERVISOR QUICK-LOOK DASHBOARD (UNCOLLECTED BOOKS)
+# ==========================================
+st.subheader("📊 District Supervisor Overview: Uncollected Books")
+
+school_df = load_data("school_inventory")
+master_df = load_data("master_inventory")
+
+if not school_df.empty and "status" in school_df.columns:
+    # Filter items ready for pickup ("For Release")
+    pending_df = school_df[school_df["status"].astype(str).str.strip().str.lower() == "for release"].copy()
+
+    if not pending_df.empty:
+        # Merge prices from master inventory for total value calculations
+        if not master_df.empty:
+            cols_to_merge = ["book_title"]
+            if "unit_cost" in master_df.columns:
+                cols_to_merge.append("unit_cost")
+            
+            # Case-insensitive title match
+            pending_df["book_title_clean"] = pending_df["book_title"].astype(str).str.strip().str.lower()
+            master_merge = master_df[cols_to_merge].copy()
+            master_merge["book_title_clean"] = master_merge["book_title"].astype(str).str.strip().str.lower()
+            master_merge = master_merge.drop(columns=["book_title"])
+            
+            pending_df = pending_df.merge(master_merge, on="book_title_clean", how="left").drop(columns=["book_title_clean"])
+
+        if "unit_cost" not in pending_df.columns:
+            pending_df["unit_cost"] = 90.00
+        else:
+            pending_df["unit_cost"] = pending_df["unit_cost"].fillna(90.00)
+
+        # Calculate Total Cost per record
+        pending_df["total_value"] = pending_df["quantity_received"] * pending_df["unit_cost"]
+
+        # Aggregate by School
+        school_summary = pending_df.groupby("school_name").agg(
+            pending_titles=("book_title", "nunique"),
+            total_copies=("quantity_received", "sum"),
+            total_value=("total_value", "sum")
+        ).reset_index().sort_values(by="total_copies", ascending=False)
+
+        # Top Executive Metrics
+        tot_copies = int(school_summary["total_copies"].sum())
+        tot_schools_pending = len(school_summary)
+        tot_value = school_summary["total_value"].sum()
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("📦 Total Books Ready for Pickup", f"{tot_copies:,} pcs")
+        m2.metric("🏫 Schools with Uncollected Books", f"{tot_schools_pending} Schools")
+        m3.metric("💵 Total Value at Warehouse", f"₱{tot_value:,.2f}")
+
+        st.markdown("### 🏫 List of Schools with Pending Pickups")
+        
+        # Display clean summary table for Supervisor review
+        st.dataframe(
+            school_summary.rename(columns={
+                "school_name": "School Name",
+                "pending_titles": "Uncollected Titles",
+                "total_copies": "Total Copies Pending",
+                "total_value": "Total Value (₱)"
+            }),
+            use_container_width=True
+        )
+
+        # Quick Detailed Breakdown per School
+        with st.expander("🔍 View Detailed Item Breakdown by School"):
+            selected_super_school = st.selectbox("Select School to Inspect:", school_summary["school_name"].tolist())
+            detail_records = pending_df[pending_df["school_name"] == selected_super_school]
+            st.dataframe(
+                detail_records[["book_title", "quantity_received", "unit_cost", "total_value"]].rename(columns={
+                    "book_title": "Book Title",
+                    "quantity_received": "Copies Waiting",
+                    "unit_cost": "Unit Cost (₱)",
+                    "total_value": "Total Cost (₱)"
+                }),
+                use_container_width=True
+            )
+    else:
+        st.success("🎉 All allocated books have been picked up across all 16 schools!")
+else:
+    st.info("No dispatch data logged yet.")
             st.success("🎉 No pending dispatches for this school. All books have been received!")
     else:
         st.info("No dispatches logged for this school yet.")
