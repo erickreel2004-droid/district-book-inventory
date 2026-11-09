@@ -328,3 +328,333 @@ def generate_official_deped_ics_excel(school_name, date_str, df_items):
     ws.cell(row=sig_start+3, column=1, value="District Property Custodian").alignment = align_center
 
     ws.merge_cells(start_row=sig_start+4, start_column=1, end_row=sig_start+4, end_column=5)
+    ws.cell(row=sig_start+4, column=1, value="Date: ____________________").alignment = align_center
+
+    ws.merge_cells(start_row=sig_start+2, start_column=6, end_row=sig_start+2, end_column=10)
+    ws.cell(row=sig_start+2, column=6, value="__________________________________").alignment = align_center
+
+    ws.merge_cells(start_row=sig_start+3, start_column=6, end_row=sig_start+3, end_column=10)
+    ws.cell(row=sig_start+3, column=6, value="Signature over Printed Name of End-User").alignment = align_center
+
+    ws.merge_cells(start_row=sig_start+4, start_column=6, end_row=sig_start+4, end_column=10)
+    ws.cell(row=sig_start+4, column=6, value=f"Date: {date_str}").alignment = align_center
+
+    for r in range(sig_start, sig_start+5):
+        for c in range(1, 11):
+            ws.cell(row=r, column=c).border = thin_border
+
+    # Set Column Widths for clean 10-column layout
+    col_widths = {1: 10, 2: 8, 3: 12, 4: 14, 5: 30, 6: 12, 7: 14, 8: 14, 9: 18, 10: 18}
+    for col_idx, width in col_widths.items():
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+# ==========================================
+# 5. CUSTODIAN VIEW
+# ==========================================
+if role == "Custodian View":
+    st.header("🔒 Custodian Control Panel")
+
+    password = st.text_input("Enter Custodian Password to Access:", type="password")
+    CUSTODIAN_PASSWORD = "admin123"
+
+    if password == CUSTODIAN_PASSWORD:
+        st.success("Access Granted!")
+
+        col1, col2 = st.columns([1, 2])
+
+        with col1:
+            st.subheader("Add / Update Central Stock")
+            with st.form("add_book_form"):
+                title = st.text_input("Book Title")
+                stock = st.number_input("Quantity to Add", min_value=1, step=1, value=100)
+                unit_cost = st.number_input("Unit Cost (₱)", min_value=0.0, step=0.01, value=90.00, format="%.2f")
+                dr_no = st.text_input("DR No. (Optional)")
+                iar_no = st.text_input("IAR No. (Optional)")
+                useful_life = st.number_input("Useful Life (Years)", min_value=1, step=1, value=3)
+                submit = st.form_submit_button("Add to Master Stock")
+
+                if submit and title:
+                    master_df = load_data("master_inventory")
+                    title_clean = title.strip()
+
+                    if not master_df.empty and "book_title" in master_df.columns and title_clean in master_df["book_title"].values:
+                        master_df.loc[master_df["book_title"] == title_clean, "central_stock"] += stock
+                        master_df.loc[master_df["book_title"] == title_clean, "unit_cost"] = unit_cost
+                        master_df.loc[master_df["book_title"] == title_clean, "dr_no"] = dr_no
+                        master_df.loc[master_df["book_title"] == title_clean, "iar_no"] = iar_no
+                        master_df.loc[master_df["book_title"] == title_clean, "useful_life"] = useful_life
+                    else:
+                        new_row = pd.DataFrame([{
+                            "book_title": title_clean, 
+                            "central_stock": stock,
+                            "unit_cost": unit_cost,
+                            "dr_no": dr_no,
+                            "iar_no": iar_no,
+                            "useful_life": useful_life
+                        }])
+                        master_df = pd.concat([master_df, new_row], ignore_index=True)
+
+                    conn.update(worksheet="master_inventory", data=master_df)
+                    st.success(f"Added {stock} copies of '{title_clean}'!")
+                    st.rerun()
+
+        with col2:
+            st.subheader("Dispatch Books to Schools")
+            master_df = load_data("master_inventory")
+
+            if master_df.empty or "book_title" not in master_df.columns:
+                st.info("Please add books to Central Stock first before dispatching.")
+            else:
+                master_df = master_df.sort_values(by="book_title", ascending=False)
+                book_options = master_df["book_title"].tolist()
+
+                m_col1, m_col2 = st.columns([3, 1])
+                selected_book = m_col1.selectbox("📖 Select Book Title to Dispatch:", book_options)
+                dispatch_all_btn = m_col2.button("⚡ Batch Dispatch All", type="primary", use_container_width=True)
+
+                current_stock = int(master_df.loc[master_df["book_title"] == selected_book, "central_stock"].values[0])
+
+                st.divider()
+
+                live_total_requested = 0
+                dispatch_selections = []
+
+                for idx, school in enumerate(SCHOOL_LIST):
+                    c1, c2, c3 = st.columns([4, 2, 2])
+                    c1.write(f"**{school}**")
+
+                    input_key = f"dispatch_qty_{selected_book}_{idx}"
+                    if input_key not in st.session_state:
+                        st.session_state[input_key] = 10
+
+                    qty = c2.number_input(
+                        f"Qty for {school}",
+                        min_value=1,
+                        step=1,
+                        key=input_key,
+                        label_visibility="collapsed",
+                    )
+                    live_total_requested += qty
+                    dispatch_selections.append({"school": school, "qty": qty})
+
+                    if c3.button("Dispatch", key=f"dispatch_btn_{selected_book}_{idx}"):
+                        if qty > current_stock:
+                            st.error(f"Not enough stock! Only {current_stock} available.")
+                        else:
+                            master_df.loc[master_df["book_title"] == selected_book, "central_stock"] -= qty
+                            conn.update(worksheet="master_inventory", data=master_df)
+
+                            school_df = load_data("school_inventory")
+                            new_dispatch = pd.DataFrame([{
+                                "school_name": school,
+                                "book_title": selected_book,
+                                "quantity_received": qty,
+                                "status": "For Release"
+                            }])
+                            school_df = pd.concat([school_df, new_dispatch], ignore_index=True)
+                            conn.update(worksheet="school_inventory", data=school_df)
+
+                            st.success(f"Dispatched {qty} copies of '{selected_book}' to {school}!")
+                            st.rerun()
+
+                st.divider()
+                m1, m2, m3 = st.columns(3)
+                m1.metric("📦 Warehouse Stock Available", current_stock)
+                m2.metric("📋 Total Input (All Schools)", live_total_requested)
+                m3.metric("🟢 Remaining Stock After Batch", current_stock - live_total_requested)
+
+                if dispatch_all_btn:
+                    if live_total_requested > current_stock:
+                        st.error(f"Cannot batch dispatch! Required `{live_total_requested}` copies, but only `{current_stock}` available.")
+                    else:
+                        master_df.loc[master_df["book_title"] == selected_book, "central_stock"] -= live_total_requested
+                        conn.update(worksheet="master_inventory", data=master_df)
+
+                        school_df = load_data("school_inventory")
+                        new_rows = pd.DataFrame([
+                            {
+                                "school_name": item["school"],
+                                "book_title": selected_book,
+                                "quantity_received": item["qty"],
+                                "status": "For Release"
+                            } for item in dispatch_selections
+                        ])
+                        school_df = pd.concat([school_df, new_rows], ignore_index=True)
+                        conn.update(worksheet="school_inventory", data=school_df)
+
+                        st.success(f"Successfully batch dispatched **{selected_book}** to all schools!")
+                        st.rerun()
+
+        st.divider()
+
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Central Warehouse Stock", 
+            "🚚 Dispatched Inventory Log", 
+            "📅 Scheduled Appointments",
+            "📈 Supervisor Overview (Uncollected)"
+        ])
+
+        with tab1:
+            central_df = load_data("master_inventory")
+            if not central_df.empty:
+                st.dataframe(central_df, use_container_width=True)
+
+        with tab2:
+            dispatched_df = load_data("school_inventory")
+            if not dispatched_df.empty:
+                st.dataframe(dispatched_df, use_container_width=True)
+
+        with tab3:
+            appointments_df = load_data("appointments")
+            if not appointments_df.empty:
+                st.dataframe(appointments_df, use_container_width=True)
+
+        with tab4:
+            st.subheader("📊 District Supervisor Overview: Uncollected Books")
+
+            school_df = load_data("school_inventory")
+            master_df = load_data("master_inventory")
+
+            if not school_df.empty and "status" in school_df.columns:
+                pending_df = school_df[school_df["status"].astype(str).str.strip().str.lower() == "for release"].copy()
+
+                if not pending_df.empty:
+                    if not master_df.empty:
+                        cols_to_merge = ["book_title"]
+                        if "unit_cost" in master_df.columns:
+                            cols_to_merge.append("unit_cost")
+                        
+                        pending_df["book_title_clean"] = pending_df["book_title"].astype(str).str.strip().str.lower()
+                        master_merge = master_df[cols_to_merge].copy()
+                        master_merge["book_title_clean"] = master_merge["book_title"].astype(str).str.strip().str.lower()
+                        master_merge = master_merge.drop(columns=["book_title"])
+                        
+                        pending_df = pending_df.merge(master_merge, on="book_title_clean", how="left").drop(columns=["book_title_clean"])
+
+                    if "unit_cost" not in pending_df.columns:
+                        pending_df["unit_cost"] = 90.00
+                    else:
+                        pending_df["unit_cost"] = pending_df["unit_cost"].fillna(90.00)
+
+                    pending_df["total_value"] = pending_df["quantity_received"] * pending_df["unit_cost"]
+
+                    school_summary = pending_df.groupby("school_name").agg(
+                        pending_titles=("book_title", "nunique"),
+                        total_copies=("quantity_received", "sum"),
+                        total_value=("total_value", "sum")
+                    ).reset_index().sort_values(by="total_copies", ascending=False)
+
+                    tot_copies = int(school_summary["total_copies"].sum())
+                    tot_schools_pending = len(school_summary)
+                    tot_value = school_summary["total_value"].sum()
+
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("📦 Total Books Ready for Pickup", f"{tot_copies:,} pcs")
+                    m2.metric("🏫 Schools with Uncollected Books", f"{tot_schools_pending} Schools")
+                    m3.metric("💵 Total Value at Warehouse", f"₱{tot_value:,.2f}")
+
+                    st.markdown("### 🏫 List of Schools with Pending Pickups")
+                    
+                    st.dataframe(
+                        school_summary.rename(columns={
+                            "school_name": "School Name",
+                            "pending_titles": "Uncollected Titles",
+                            "total_copies": "Total Copies Pending",
+                            "total_value": "Total Value (₱)"
+                        }),
+                        use_container_width=True
+                    )
+
+                    with st.expander("🔍 View Detailed Item Breakdown by School"):
+                        selected_super_school = st.selectbox("Select School to Inspect:", school_summary["school_name"].tolist())
+                        detail_records = pending_df[pending_df["school_name"] == selected_super_school]
+                        st.dataframe(
+                            detail_records[["book_title", "quantity_received", "unit_cost", "total_value"]].rename(columns={
+                                "book_title": "Book Title",
+                                "quantity_received": "Copies Waiting",
+                                "unit_cost": "Unit Cost (₱)",
+                                "total_value": "Total Cost (₱)"
+                            }),
+                            use_container_width=True
+                        )
+                else:
+                    st.success("🎉 All allocated books have been picked up across all 16 schools!")
+            else:
+                st.info("No dispatch data logged yet.")
+
+# ==========================================
+# 6. PRINCIPAL VIEW
+# ==========================================
+else:
+    st.header(f"Principal Portal - {selected_school}")
+
+    st.info(f"ℹ️ **Notice for {selected_school}:** Please be informed that the following books/learning materials assigned to your school are now ready for pickup at the District Office.")
+
+    school_df = load_data("school_inventory")
+    master_df = load_data("master_inventory")
+
+    if not school_df.empty and "school_name" in school_df.columns:
+        filtered = school_df[school_df["school_name"].astype(str).str.strip() == selected_school.strip()]
+        
+        if not filtered.empty and "status" in filtered.columns:
+            filtered = filtered[filtered["status"].astype(str).str.strip().str.lower() != "received"]
+        
+        if not filtered.empty:
+            summary = filtered.groupby(["book_title", "status"])["quantity_received"].sum().reset_index()
+            
+            # --- CASE-INSENSITIVE MERGE FOR DR & IAR DATA ---
+            if not master_df.empty:
+                cols_to_merge = ["book_title"]
+                for col_name in ["unit_cost", "useful_life", "dr_no", "iar_no"]:
+                    if col_name in master_df.columns:
+                        cols_to_merge.append(col_name)
+                
+                summary["book_title_clean"] = summary["book_title"].astype(str).str.strip().str.lower()
+                master_merge_df = master_df[cols_to_merge].copy()
+                master_merge_df["book_title_clean"] = master_merge_df["book_title"].astype(str).str.strip().str.lower()
+                master_merge_df = master_merge_df.drop(columns=["book_title"])
+
+                summary = summary.merge(master_merge_df, on="book_title_clean", how="left").drop(columns=["book_title_clean"])
+            
+            if "unit_cost" not in summary.columns:
+                summary["unit_cost"] = 90.00
+            else:
+                summary["unit_cost"] = summary["unit_cost"].fillna(90.00)
+
+            if "useful_life" not in summary.columns:
+                summary["useful_life"] = 3
+            else:
+                summary["useful_life"] = summary["useful_life"].fillna(3)
+
+            summary = summary.sort_values(by="book_title", ascending=False)
+            
+            # Display readable summary on web interface
+            display_cols = ["book_title", "status", "quantity_received", "unit_cost"]
+            for col_opt in ["dr_no", "iar_no"]:
+                if col_opt in summary.columns:
+                    display_cols.append(col_opt)
+
+            st.dataframe(summary[display_cols], use_container_width=True)
+
+            excel_data = generate_official_deped_ics_excel(
+                school_name=selected_school,
+                date_str=datetime.now().strftime("%B %d, %Y"),
+                df_items=summary
+            )
+
+            st.download_button(
+                label="📊 Download DepEd ICS Form (Excel)",
+                data=excel_data,
+                file_name=f"ICS_{selected_school.replace(' ', '_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary"
+            )
+        else:
+            st.success("🎉 No pending dispatches for this school. All books have been received!")
+    else:
+        st.info("No dispatches logged for this school yet.")
