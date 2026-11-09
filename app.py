@@ -563,8 +563,8 @@ if role == "Custodian View":
                     st.dataframe(
                         school_summary.rename(columns={
                             "school_name": "School Name",
-                            "pending_titles": "Uncollected Titles",
-                            "total_copies": "Total Copies Pending",
+                            "pending_titles": "Number ICS (TX-TM)",
+                            "total_copies": "Total Number of Books",
                             "total_value": "Total Value (₱)"
                         }),
                         use_container_width=True
